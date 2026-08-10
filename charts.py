@@ -40,13 +40,16 @@ def _need(df, col, what):
 def _labels(ax, df, x_col, tick_step=None):
     """设置分类横轴刻度（行数多时抽样）。"""
     n = len(df)
-    labels = df[x_col].astype(str).tolist()
     if tick_step:
         idx = list(range(0, n, tick_step))
+    elif n > 1000:
+        idx = list(range(0, n, max(1, n // 20)))
     else:
         idx = list(range(n))
+    # 只转换抽样到的标签，避免大文件全量 astype
+    labels = [str(df[x_col].iloc[i]) for i in idx]
     ax.set_xticks(idx)
-    ax.set_xticklabels([labels[i] for i in idx], rotation=45, ha="right")
+    ax.set_xticklabels(labels, rotation=45, ha="right")
 
 
 def _title(ax, params, default):
@@ -182,6 +185,8 @@ def _candlestick(fig, df, p):
     ax = fig.add_subplot(111)
     for c, name in (("open", "开盘"), ("high", "最高"), ("low", "最低"), ("close", "收盘")):
         _need(df, p[c], name)
+    if len(df) > 250:
+        df = df.tail(250).reset_index(drop=True)  # 大文件只画最近 250 根，保证性能
     op = _num(df, p["open"]); hi = _num(df, p["high"])
     lo = _num(df, p["low"]); cl = _num(df, p["close"])
     width = 0.6
