@@ -85,15 +85,20 @@ def _chain_record(file_path):
 
 def load_session():
     with _SESSION_LOCK:
-        if os.path.exists(SESSION_FILE):
-            with open(SESSION_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+        try:
+            if os.path.exists(SESSION_FILE):
+                with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass  # session 文件损坏时回退默认值，不崩溃
         return {
             "last_search_results": [],
             "selected_file": None,
             "selected_chart_type": None,
             "selected_columns": None,
             "selected_numeric_columns": None,
+            "pending_market_query": None,
+            "last_market_symbol": None,
         }
 
 def save_session(data):
@@ -127,11 +132,15 @@ def read_file(path: str):
         enc = _detect_csv_encoding(path)
         with open(path, 'r', encoding=enc) as f:
             content = f.read()
+        # 二进制检测：空字节或大量控制字符视为二进制文件
+        ctrl = sum(1 for ch in content if ord(ch) < 9 or 13 < ord(ch) < 32)
+        if "\x00" in content or (content and ctrl / len(content) > 0.3):
+            return f"无法以文本方式读取该文件（可能是二进制格式）: {path}"
         if len(content) > 5000:
             content = content[:5000] + "\n\n... (文件过长，仅显示前5000字符)"
         return content
-    except UnicodeDecodeError:
-        return f"无法以文本方式读取该文件（可能是二进制格式）: {path}"
+    except (UnicodeDecodeError, OSError):
+        return f"无法以文本方式读取该文件（可能是二进制格式或目录）: {path}"
 
 def read_csv(file_path: str):
     if not os.path.exists(file_path):
@@ -919,7 +928,7 @@ CHART_DIR = Path(__file__).parent / "charts"
 CHART_DIR.mkdir(exist_ok=True)
 
 def _save_chart(fig, chart_type: str):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f")
     save_path = CHART_DIR / f"{chart_type}_{timestamp}.png"
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
@@ -933,7 +942,7 @@ def _detect_csv_encoding(file_path: str):
             with open(file_path, 'r', encoding=enc) as f:
                 f.read()
             return enc
-        except UnicodeDecodeError:
+        except (UnicodeDecodeError, OSError):
             continue
     return 'utf-8-sig'
 
@@ -957,6 +966,7 @@ def _load_data(file_path: str):
 def _plot(chart_type, file_path, password=None, source="local", days=60, **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
     tmp_path = None
+    fig = None
     try:
         # 数据链：自动记录该文件的变更历史
         _chain_record(file_path)
@@ -970,10 +980,18 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, **kwarg
         else:
             eff_path, tmp_path = _maybe_decrypt(file_path, password)
             df = _load_data(eff_path)
+        if df is None or df.empty:
+            return "❌ 数据为空，无法画图"
         fig = charts.build_figure(chart_type, df, **kwargs)
         save_path = _save_chart(fig, chart_type)
+        fig = None  # _save_chart 已负责关闭
         return f"✅ 图表已保存: {save_path}"
     except Exception as e:
+        if fig is not None:
+            try:
+                plt.close(fig)
+            except Exception:
+                pass
         return f"❌ 画图失败: {str(e)}"
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -1929,7 +1947,10 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
     fn = dispatch.get(analysis)
     if not fn:
         return f"❌ 未知分析类型: {analysis}，可用: {', '.join(dispatch)}"
-    return fn()
+    try:
+        return fn()
+    except Exception as e:
+        return f"❌ 统计失败: {e}"
 
 
 @mcp.tool
