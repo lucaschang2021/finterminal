@@ -957,6 +957,8 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, **kwarg
         if source == "api":
             # 实时行情来源：直接拉取日K线（如 K线图/收盘价走势）
             df = market_data.kline(file_path, days)
+            if chart_type == "technical":
+                df = market_data.indicators(df)
         else:
             eff_path, tmp_path = _maybe_decrypt(file_path, password)
             df = _load_data(eff_path)
@@ -1176,6 +1178,8 @@ def _dispatch_tool(tool_name, tool_args):
         return knowledge_list(**tool_args)
     elif tool_name == "knowledge_status":
         return knowledge_status(**tool_args)
+    elif tool_name == "research_agent":
+        return research_agent(**tool_args)
     raise ValueError(f"未知工具: {tool_name}")
 
 
@@ -1210,6 +1214,11 @@ def ask(query: str):
         # 用户没有回应歧义选择，说明已转向其它意图，清除待处理状态
         session["pending_market_query"] = None
         save_session(session)
+
+    # ====== 研究报告类指令（Agentic 自主研究） ======
+    if _is_research_query(query):
+        symbol, _name = _extract_market_symbol(query)
+        return research_agent(query, symbol=symbol)
 
     # ====== 行情类指令预路由（实时 vs 历史，避免误导向 RAG） ======
     if _is_market_query(query):
@@ -1355,7 +1364,7 @@ def ask(query: str):
             {"type": "function", "function": {"name": "plot", "description": "画图，24 种类型；source=api 时 file_path 填股票代码画K线/走势", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}, "source": {"type": "string"}, "days": {"type": "integer"}}, "required": ["chart_type", "file_path"]}}},
             {"type": "function", "function": {"name": "clean", "description": "清洗杂乱数据", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
-            {"type": "function", "function": {"name": "chain", "description": "数据链：status/track/untrack/snapshot/history/show/cleanup/verify", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "path": {"type": "string"}, "file_path": {"type": "string"}, "record_id": {"type": "string"}, "keep_versions": {"type": "integer"}, "max_age_days": {"type": "integer"}, "archive": {"type": "boolean"}, "check_live": {"type": "boolean"}, "quick": {"type": "boolean"}}}}},
+            {"type": "function", "function": {"name": "chain", "description": "数据链：status/track/untrack/snapshot/history/show/cleanup/verify/anchor", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "path": {"type": "string"}, "file_path": {"type": "string"}, "record_id": {"type": "string"}, "keep_versions": {"type": "integer"}, "max_age_days": {"type": "integer"}, "archive": {"type": "boolean"}, "check_live": {"type": "boolean"}, "quick": {"type": "boolean"}}}}},
             {"type": "function", "function": {"name": "knowledge_add", "description": "把文件加入 RAG 知识库", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "knowledge_query", "description": "检索知识库相关内容", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
             {"type": "function", "function": {"name": "knowledge_fusion", "description": "结合知识库与实时行情做综合分析", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "symbol": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
@@ -1363,6 +1372,7 @@ def ask(query: str):
             {"type": "function", "function": {"name": "knowledge_remove", "description": "按文件路径从知识库移除文档", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "knowledge_list", "description": "列出知识库中的文档", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "knowledge_status", "description": "查看知识库状态", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "research_agent", "description": "Agentic 自主研究：自动完成行情/指标/趋势/研报/预测并生成研究报告", "parameters": {"type": "object", "properties": {"topic": {"type": "string"}, "symbol": {"type": "string"}, "top_k": {"type": "integer"}, "save": {"type": "boolean"}}, "required": ["topic"]}}},
         ]
 
         for round_idx in range(1, MAX_TOOL_ROUNDS + 1):
@@ -1462,6 +1472,39 @@ def _vision_parse(file_path):
         return "\n".join(out)
     except Exception as e:
         return f"❌ 图片解析失败: {e}"
+
+
+def _vision_analyze(file_path):
+    """多模态解析：配置了视觉模型（VLM）时调用之，否则回退 OCR。
+    配置项（config.json）：vision_api_key / vision_model / vision_base_url。"""
+    vkey = config.get("vision_api_key") or ""
+    vmodel = config.get("vision_model") or ""
+    vbase = config.get("vision_base_url") or "https://api.openai.com/v1"
+    if vkey and vmodel:
+        try:
+            import base64
+            ext = Path(file_path).suffix.lower().lstrip(".")
+            mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                    "bmp": "image/bmp", "webp": "image/webp"}.get(ext, "image/png")
+            with open(file_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            client = openai.OpenAI(api_key=vkey, base_url=vbase)
+            resp = client.chat.completions.create(
+                model=vmodel,
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": "请识别这张图片中的文字与图表数据，按三部分回答："
+                                             "1) 提取的文字内容 2) 结构化表格/图表数据 3) 简要总结。用中文。"},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                ]}],
+                max_tokens=1200,
+            )
+            out = resp.choices[0].message.content or ""
+            return f"🖼️ 图片解析（视觉模型 {vmodel}）: {file_path}\n\n{out}"
+        except Exception as e:
+            return f"❌ 视觉模型调用失败（{vmodel}）: {e}"
+    # 回退：OCR
+    info = _vision_parse(file_path)
+    return info + "\n\n（未配置视觉模型，已用 OCR 识别；可在 config.json 配置 vision_api_key/vision_model 启用 VLM）"
 
 
 def knowledge_add(file_path, password=None):
@@ -1575,6 +1618,92 @@ def knowledge_status():
         return f"❌ 状态查询失败: {e}"
 
 
+def research_agent(topic, symbol=None, top_k=3, save=True):
+    """Agentic 自主研究：行情 → 历史K线/技术指标 → 趋势统计 → 知识库研报 → 预测 → AI 综合结论。"""
+    try:
+        err = _api_key_error()
+        if err:
+            return err
+        if not symbol:
+            symbol, _name = _extract_market_symbol(topic)
+        if not symbol:
+            return "❌ 请指定要研究的股票（例如：写一份贵州茅台的研究报告）"
+
+        name = symbol
+        try:
+            q = market_data.quote(symbol)
+            name = q.get("名称", symbol)
+            quote_txt = "；".join(f"{k}: {v}" for k, v in q.items() if v is not None and k not in ("名称", "代码", "来源"))
+        except Exception as e:
+            q = {}
+            quote_txt = f"（行情获取失败: {e}）"
+
+        ind = market_data.indicators(market_data.kline(symbol, 120))
+        last = ind.iloc[-1]
+        tech_txt = (f"MA5={last['MA5']:.2f} MA20={last['MA20']:.2f} MA60={last['MA60']:.2f} "
+                    f"MACD={last['MACD']:.3f} RSI={last['RSI']:.1f} "
+                    f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
+
+        trend_df, period = analysis.trend(ind, date_column="日期", value_columns="收盘")
+        _df, fdf = market_data.forecast(symbol, 120, 10)
+        docs = knowledge.query(topic, top_k)
+
+        ai_input = [f"行情: {quote_txt}", f"技术面: {tech_txt}",
+                    "趋势: " + trend_df.to_string(index=False),
+                    "预测: " + fdf.to_string(index=False)]
+        if docs:
+            for d in docs[:3]:
+                ai_input.append(f"研报({d['来源']}): {d['内容'][:200]}")
+
+        client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        resp = client.chat.completions.create(
+            model=DEEPSEEK_MODEL,
+            messages=[
+                {"role": "system", "content": "你是资深卖方分析师，基于实时行情、技术指标、趋势统计与历史研报，"
+                                               "撰写结构化投资研究报告（中文，600字内），分：核心观点/行情与技术面/"
+                                               "趋势与预测/研报观点/风险提示。"},
+                {"role": "user", "content": f"研究对象: {name}（{symbol}）\n问题: {topic}\n\n数据:\n"
+                                             + "\n".join(ai_input)[:6000]},
+            ],
+            max_tokens=1200,
+        )
+        conclusion = resp.choices[0].message.content or ""
+
+        lines = [
+            f"# {name}（{symbol}）投资研究报告",
+            f"**行情**（{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}）: {quote_txt}",
+            "",
+            f"**技术面**: {tech_txt}",
+            "",
+            "**趋势统计**（近120个交易日）:",
+            trend_df.to_string(index=False),
+            "",
+            "**未来10日线性预测**（仅供研究参考）:",
+            fdf.to_string(index=False),
+            "",
+            "**知识库研报观点**:",
+        ]
+        if docs:
+            for i, d in enumerate(docs[:3], 1):
+                lines.append(f"[{i}] 来源 {d['来源']}: {d['内容'][:300]}")
+        else:
+            lines.append("（知识库为空，可先把研报添加到知识库）")
+        lines += ["", "## AI 综合结论", conclusion,
+                  "", "📌 来源：实时行情 + 历史K线指标 + RAG 知识库 + 线性预测（多源）"]
+        body = "\n".join(lines)
+        if save:
+            REPORT_DIR = Path(__file__).parent / "reports"
+            REPORT_DIR.mkdir(exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_path = REPORT_DIR / f"{name}_{symbol}_research_{ts}.md"
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(body)
+            return f"✅ 研究报告已生成: {out_path}\n\n{body[:1800]}\n\n...（完整报告已保存）"
+        return body
+    except Exception as e:
+        return f"❌ 研究失败: {e}"
+
+
 # ==================== Phase 8: 意图路由与消歧 ====================
 
 _TIME_HISTORICAL_WORDS = ("历史", "过去", "财报", "研报", "年报", "季报", "去年", "今年",
@@ -1661,6 +1790,14 @@ def _is_market_query(query):
     return any(v in query for v in _MARKET_VERBS)
 
 
+def _is_research_query(query):
+    """研究报告类指令：命中关键词且能提取股票时触发 Agentic 研究代理。"""
+    if not any(k in query for k in ("研究报告", "投资报告", "出一份", "写报告", "研究一下")):
+        return False
+    symbol, _ = _extract_market_symbol(query)
+    return symbol is not None
+
+
 def _parse_ambiguity_choice(query):
     """解析消歧选择：回复 1/2 或“实时/历史”。"""
     q = query.strip()
@@ -1734,7 +1871,7 @@ def read(file_path: str = None, source: str = "local", sheet_name: str = None,
         return _market_quote(file_path)
     ext = Path(file_path).suffix.lower()
     if vision_ocr.is_image(file_path):
-        return _vision_parse(file_path)
+        return _vision_analyze(file_path)
     if ext == ".csv":
         return read_csv(file_path)
     if ext in (".xlsx", ".xls"):
@@ -1825,7 +1962,9 @@ def chain(action: str = "status", path: str = None, file_path: str = None, recor
                                       archive=archive, file_path=file_path)
         if action == "verify":
             return data_chain.verify(check_live=check_live, quick=quick)
-        return f"❌ 未知操作: {action}，可用: status/track/untrack/snapshot/history/show/cleanup/verify"
+        if action == "anchor":
+            return data_chain.anchor()
+        return f"❌ 未知操作: {action}，可用: status/track/untrack/snapshot/history/show/cleanup/verify/anchor"
     except Exception as e:
         return f"❌ 数据链操作失败: {e}"
 

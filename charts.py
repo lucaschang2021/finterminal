@@ -342,6 +342,37 @@ def _errorbar(fig, df, p):
     _title(ax, p, "误差条图")
 
 
+def _technical(fig, df, p):
+    """技术面组合图：价格 + MA + 布林带 + RSI。需要指标列（见 market_data.indicators）。"""
+    need = ["收盘", "MA5", "MA20", "BOLL上", "BOLL下", "RSI"]
+    missing = [c for c in need if c not in df.columns]
+    if missing:
+        raise ValueError(f"缺少指标列: {missing}（请用 source='api' 自动计算，或先运行 market_data.indicators）")
+    x = list(range(len(df)))
+    ax1 = fig.add_subplot(2, 1, 1)
+    ax1.plot(x, df["收盘"], label="收盘", color="#1f77b4", linewidth=1.8)
+    ax1.plot(x, df["MA5"], label="MA5", color="#ff7f0e", linewidth=1.2)
+    ax1.plot(x, df["MA20"], label="MA20", color="#d62728", linewidth=1.2)
+    ax1.fill_between(x, df["BOLL上"], df["BOLL下"], alpha=0.12, color="gray", label="布林带")
+    ax1.set_ylabel("价格")
+    ax1.legend(loc="upper left", fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    ax2 = fig.add_subplot(2, 1, 2, sharex=ax1)
+    ax2.plot(x, df["RSI"], label="RSI14", color="#9467bd", linewidth=1.4)
+    ax2.axhline(70, color="red", linestyle="--", linewidth=0.8)
+    ax2.axhline(30, color="green", linestyle="--", linewidth=0.8)
+    ax2.set_ylim(0, 100)
+    ax2.set_ylabel("RSI")
+    ax2.legend(loc="upper left", fontsize=8)
+    ax2.grid(True, alpha=0.3)
+    labels = df["日期"].astype(str).tolist()
+    step = max(1, len(df) // 15)
+    ax2.set_xticks(x[::step])
+    ax2.set_xticklabels([labels[i] for i in x[::step]], rotation=45, ha="right", fontsize=8)
+    _title(ax1, p, "技术面分析")
+
+
 def _treemap(fig, df, p):
     try:
         import squarify
@@ -402,6 +433,7 @@ HANDLERS = {
     "step": _step,
     "polar": _polar,
     "errorbar": _errorbar,
+    "technical": _technical,
     "treemap": _treemap,
     "scatter3d": _scatter3d,
     "surface": _surface,

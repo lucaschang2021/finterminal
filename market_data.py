@@ -100,3 +100,58 @@ def kline(symbol, days=60):
     for c in ("开盘", "收盘", "最高", "最低", "成交量"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
+
+
+def indicators(df):
+    """计算常用技术指标并追加到 K 线 DataFrame：MA5/10/20/60、MACD、RSI14、布林带。"""
+    import numpy as np
+    df = df.copy().sort_values("日期").reset_index(drop=True)
+    close = df["收盘"]
+    df["MA5"] = close.rolling(5).mean()
+    df["MA10"] = close.rolling(10).mean()
+    df["MA20"] = close.rolling(20).mean()
+    df["MA60"] = close.rolling(60).mean()
+
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    df["DIF"] = ema12 - ema26
+    df["DEA"] = df["DIF"].ewm(span=9, adjust=False).mean()
+    df["MACD"] = (df["DIF"] - df["DEA"]) * 2
+
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    df["RSI"] = 100 - 100 / (1 + rs)
+
+    mid = close.rolling(20).mean()
+    std = close.rolling(20).std()
+    df["BOLL上"] = mid + 2 * std
+    df["BOLL中"] = mid
+    df["BOLL下"] = mid - 2 * std
+    return df
+
+
+def forecast(symbol, days=120, horizon=10):
+    """基于线性趋势的简单价格预测（含 95% 近似置信区间）。
+    返回 (原始K线+指标 DataFrame, 预测 DataFrame)。"""
+    import numpy as np
+    import pandas as pd
+    df = indicators(kline(symbol, days))
+    y = df["收盘"].to_numpy(dtype=float)
+    n = len(y)
+    x = np.arange(n)
+    slope, intercept = np.polyfit(x, y, 1)
+    resid = y - (slope * x + intercept)
+    sigma = float(resid.std(ddof=2)) if n > 2 else 0.0
+    fx = np.arange(n, n + horizon)
+    fy = slope * fx + intercept
+    band = 1.96 * sigma * np.sqrt(1 + 1 / n + ((fx - x.mean()) ** 2).sum() / ((x - x.mean()) ** 2).sum())
+    fdf = pd.DataFrame({
+        "日期": [str(i) for i in range(1, horizon + 1)],
+        "预测收盘": np.round(fy, 2),
+        "下界": np.round(fy - band, 2),
+        "上界": np.round(fy + band, 2),
+    })
+    fdf["日期"] = [f"T+{i}" for i in range(1, horizon + 1)]
+    return df, fdf

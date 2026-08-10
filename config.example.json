@@ -4,5 +4,8 @@
   "desktop_dir": "C:/Users/liuj/Desktop",
   "encrypt_knowledge": false,
   "encrypt_snapshots": false,
-  "market_names": {}
+  "market_names": {},
+  "vision_api_key": "",
+  "vision_model": "",
+  "vision_base_url": "https://api.openai.com/v1"
 }

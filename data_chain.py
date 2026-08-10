@@ -39,6 +39,7 @@ TRACK_FILE = CHAIN_DIR / "tracked.json"
 SNAPSHOT_DIR = CHAIN_DIR / "snapshots"
 CLEANUP_FILE = CHAIN_DIR / "cleanup.json"
 ARCHIVE_DIR = CHAIN_DIR / "archive"
+ANCHOR_FILE = CHAIN_DIR / "anchors.json"
 
 GENESIS_HASH = "0" * 64
 
@@ -134,6 +135,17 @@ def _load_cleanup():
 
 def _save_cleanup(data):
     _save_json(CLEANUP_FILE, data)
+
+
+def _load_anchors():
+    data = _load_json(ANCHOR_FILE, {"anchors": []})
+    if not isinstance(data.get("anchors"), list):
+        data["anchors"] = []
+    return data
+
+
+def _save_anchors(data):
+    _save_json(ANCHOR_FILE, data)
 
 
 def _record_hash(record) -> str:
@@ -601,6 +613,36 @@ def _format_record(rec):
 
 # ==================== 快照清理 ====================
 
+def anchor(service_url="https://freetsa.org/tsr"):
+    """把链头哈希交给 RFC3161 可信时间戳服务公证，形成可第三方验证的时间锚点。"""
+    ledger = _load_ledger()
+    records = ledger.get("records", [])
+    if not records:
+        return "数据链为空，无可锚定内容"
+    head = ledger["head_hash"]
+    try:
+        import rfc3161ng
+        stamper = rfc3161ng.RemoteTimestamper(service_url, hashname="sha256")
+        token = stamper.timestamp(bytes.fromhex(head))
+        CHAIN_DIR.mkdir(parents=True, exist_ok=True)
+        token_path = CHAIN_DIR / f"anchor_{head[:16]}.tsr"
+        token_path.write_bytes(token)
+        data = _load_anchors()
+        now = datetime.datetime.now().isoformat(timespec="seconds")
+        data["anchors"].append({
+            "head_hash": head,
+            "token": str(token_path),
+            "service": service_url,
+            "anchored_at": now,
+        })
+        _save_anchors(data)
+        return (f"✅ 链头已锚定到可信时间戳服务（RFC3161）\n"
+                f"链头: {head[:24]}…\n时间戳令牌: {token_path}\n公证时间: {now}\n"
+                f"第三方可用该 .tsr 文件验证“数据在此时刻前已存在且未被篡改”")
+    except Exception as e:
+        return f"❌ 锚定失败（需能访问时间戳服务 {service_url}）: {e}"
+
+
 def cleanup(keep_versions=10, max_age_days=None, archive=True, file_path=None):
     """按策略清理历史快照，控制磁盘占用。
 
@@ -806,6 +848,7 @@ def status():
     records = ledger["records"]
     tracked = _load_tracked().get("paths", [])
     cleanup_data = _load_cleanup()
+    anchors = _load_anchors().get("anchors", [])
 
     snap_count = sum(1 for r in records if r.get("snapshot") and os.path.exists(_snapshot_path(r["snapshot"])))
     arch_count = len(cleanup_data.get("archived", {}))
@@ -828,6 +871,7 @@ def status():
         f"链头哈希: {ledger.get('head_hash', '—')[:24]}…",
         f"跟踪路径: {len(tracked)} 个",
         f"快照: 在库 {snap_count} 个 / 归档 {arch_count} / 已清理 {pruned_count}（占用约 {size_kb:.1f} KB）",
+        f"时间戳锚点: {len(anchors)} 个",
     ]
     for p in tracked[:20]:
         lines.append(f"  - {p}")

@@ -19,9 +19,12 @@
 | 数据清洗 | `clean` 自动处理脏数据：空行/空列、重复行、空白、重复列名 |
 | 统计分析 | 描述统计、相关分析（显著性）、分组统计、回归、t 检验/ANOVA、时间趋势 |
 | 自动报告 | `analyze(analysis="report")` 生成论文风格 Markdown 报告，可选 AI 结论建议 |
-| 实时数据源 | `read(source="api")` 获取实时行情 + 历史日K线（腾讯接口，海外回退 yfinance），`plot` 可直接画K线图 |
+| 实时数据源 | 实时行情 + 历史日K线 + **技术指标（MA/MACD/RSI/布林带）** + 趋势预测；`plot` 可画技术面组合图 |
 | 多模态视觉 | `read(图片路径)` 自动 OCR 图片文字并还原表格数据 |
 | RAG 知识库 | "添加到知识库"/"查一下知识库"/"结合研报和行情分析"，本地向量检索 + 多源融合；语义分块（段落/句子级）、重复添加自动更新、可移除/清空/列清单 |
+| Agentic 研究 | `ask` 说"写一份贵州茅台的研究报告"→ 自动完成行情/指标/趋势/预测/研报/AI结论的完整研究报告 |
+| 数据可信 | 数据链链头支持 **RFC3161 可信时间戳锚定**（chain action=anchor），可第三方验证"此时刻前已存在且未被篡改" |
+| 多模态 VLM | 配置 `vision_api_key/vision_model` 后，图片走视觉大模型理解图表数据；未配置自动回退 OCR |
 
 ## 工具清单（8 个）
 
@@ -30,7 +33,7 @@
 | `read(file_path=None, source="local", sheet_name=None, max_pages=3, ocr=True, password=None, kline=False, days=60)` | 读取数据：`source="local"` 读文件（含图片 OCR/表格还原）；`source="api"` 查行情（`kline=True` 返回历史日K线） |
 | `detect(path)` | 文件体检：格式匹配、加密、损坏、空文件检测 |
 | `clean(file_path, save=False, password=None)` | 清洗杂乱数据：空行/空列、去重、修剪空白、列名规范化 |
-| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 24 种类型；`source="api"` 时直接画股票K线/走势图（如 `plot("candlestick", "sh600519", source="api")`） |
+| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 25 种类型（含 `technical` 技术面组合图）；`source="api"` 时直接画股票K线/走势/技术面 |
 | `analyze(file_path, analysis, ...)` | 统计分析统一入口：describe / correlation / groupby / regression / test / trend / report |
 | `search(keyword=None, directory=None, recursive=False)` | 搜索文件；keyword 留空列出数据文件 |
 | `chain(action, ...)` | 数据链统一入口：status / track / untrack / snapshot / history / show / cleanup / verify |
@@ -48,6 +51,8 @@
 `waterfall` 瀑布 · `funnel` 漏斗 · `step` 步进 · `polar` 极坐标 · `errorbar` 误差条 ·
 `treemap` 矩形树 · `scatter3d` 3D散点 · `surface` 3D曲面
 
+另加：`technical` 技术面组合图（价格 + MA + 布林带 + RSI，需 `source="api"` 自动计算指标）。
+
 图表保存到 `charts/` 目录，文件名带时间戳，不会覆盖旧图。K线图遵循中国习惯：红涨绿跌。
 
 ### analyze 的分析类型（analysis 参数）
@@ -62,7 +67,7 @@
 | `trend` | 时间趋势：总增幅、CAGR、平均环比、线性趋势 |
 | `report` | 自动生成论文风格 Markdown 报告（`ai_comment=True` 时由 DeepSeek 撰写结论建议），输出到 `reports/` |
 
-`ask` 支持的说法示例：`用第1个`、`查看第1个`、`画柱状图，x轴用月份，y轴用利润`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`（重复添加自动更新）、`查一下知识库：茅台的估值`、`列出知识库文档`、`清空知识库`、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
+`ask` 支持的说法示例：`用第1个`、`查看第1个`、`画贵州茅台的技术面图`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`（重复添加自动更新）、`查一下知识库：茅台的估值`、`列出知识库文档`、`清空知识库`、`写一份贵州茅台的研究报告`（Agentic 自主研究）、`给数据链盖时间戳`（chain anchor）、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
 
 ## 数据链说明
 
@@ -131,7 +136,7 @@ data_chain/
 
 - **API Key 保护**：密钥保存在 Windows 凭据管理器，`config.json` 不含明文。设置方式：`python set_api_key.py sk-你的密钥`；读取优先级：环境变量 `DEEPSEEK_API_KEY` > 凭据管理器 > `config.json`（迁移兜底）
 - **可选加密**：`config.json` 中 `encrypt_knowledge=true` 加密知识库内容、`encrypt_snapshots=true` 加密数据链快照（AES-256-GCM，密钥存凭据管理器，可用环境变量 `FIN_ENC_KEY` 覆盖；`FIN_KB_ENCRYPT=1` / `FIN_SNAP_ENCRYPT=1` 可临时开启）
-- `config.json`：模型名、桌面路径、加密开关、`market_names`（股票名称→代码映射，可扩展/覆盖内置表）；模板见 `config.example.json`
+- `config.json`：模型名、桌面路径、加密开关、`market_names`（股票名称→代码映射）、`vision_api_key/vision_model/vision_base_url`（VLM 视觉模型，可选）；模板见 `config.example.json`
 - `session.json`：会话状态持久化（搜索结果、选中文件、列名），自动维护
 
 ```json
