@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 敏感与运行数据
+.env
+config.json
+session.json
+data_chain/
+knowledge/
+cleaned/
+reports/
+charts/
+
+# 日志与临时文件
+*.log
+*.tmp

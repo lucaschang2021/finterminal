@@ -1,0 +1,168 @@
+# FinTerminal —— 金融数据终端 MCP 服务
+
+一个基于 FastMCP 的本地 MCP（Model Context Protocol）服务器，核心思路：
+**读取本地数据文件 → 可视化 → 自然语言对话操作 → 数据链追溯文件变更**。
+
+已注册给 Cline 使用，服务名 `fin-terminal`，对外暴露 **8 个精简能力工具**。
+
+> 设计说明：内部功能粒度较细（29 个底层能力），但 MCP 只对外暴露 8 个统一入口，
+> 降低模型工具选择负担与 schema 上下文占用（工具 >20 个时模型选择准确率跌破 90%）。
+
+## 功能总览
+
+| 模块 | 说明 |
+|---|---|
+| 文件读取 | CSV / Excel / Word / PDF / 文本，自动识别编码与分隔符；扫描件 OCR、加密文件密码解密、损坏检测 |
+| 数据可视化 | 24 种图表类型，输出到 `charts/` |
+| 自然语言交互 | 搜索文件、多轮对话选文件并画图，其余意图走 DeepSeek 函数调用 |
+| 数据链 | 文件变更历史 + SHA-256 哈希链（区块链基础）+ 快照清理 + 完整性校验 |
+| 数据清洗 | `clean` 自动处理脏数据：空行/空列、重复行、空白、重复列名 |
+| 统计分析 | 描述统计、相关分析（显著性）、分组统计、回归、t 检验/ANOVA、时间趋势 |
+| 自动报告 | `analyze(analysis="report")` 生成论文风格 Markdown 报告，可选 AI 结论建议 |
+| 实时数据源 | `read(source="api")` 获取 A股/港股/美股实时行情（腾讯接口，海外可回退 yfinance） |
+| 多模态视觉 | `read(图片路径)` 自动 OCR 图片文字并还原表格数据 |
+| RAG 知识库 | "添加到知识库"/"查一下知识库"/"结合研报和行情分析"，本地向量检索 + 多源融合 |
+
+## 工具清单（8 个）
+
+| 工具 | 说明 |
+|---|---|
+| `read(file_path=None, source="local", sheet_name=None, max_pages=3, ocr=True, password=None)` | 读取数据：`source="local"` 读文件（含图片 OCR/表格还原），`source="api"` 查实时行情（file_path 填股票代码） |
+| `detect(path)` | 文件体检：格式匹配、加密、损坏、空文件检测 |
+| `clean(file_path, save=False, password=None)` | 清洗杂乱数据：空行/空列、去重、修剪空白、列名规范化 |
+| `plot(chart_type, file_path, ...)` | 画图，支持 24 种类型（见下） |
+| `analyze(file_path, analysis, ...)` | 统计分析统一入口：describe / correlation / groupby / regression / test / trend / report |
+| `search(keyword=None, directory=None, recursive=False)` | 搜索文件；keyword 留空列出数据文件 |
+| `chain(action, ...)` | 数据链统一入口：status / track / untrack / snapshot / history / show / cleanup / verify |
+| `ask(query)` | 多轮对话入口，DeepSeek 驱动，自动调用以上工具 |
+
+**意图路由与消歧**：`ask` 内置时间意图识别（实时 vs 历史）与数据源路由——"现在/当前/多少钱"走实时行情，"历史/财报/研报"走 RAG 知识库；时间意图不明确时返回候选确认（回复 1/2 选择）；行情与知识库结果都标注 📌 数据来源，并支持"切换到实时数据 / 切换到历史研报"随时纠正路由。模糊指令（如"帮我看看这个"）会基于当前上下文返回可用操作列表。
+
+### 支持的图表类型（plot 的 chart_type）
+
+**支持的图表类型（chart_type）**：
+
+`line` 折线 · `bar` 柱状 · `barh` 水平柱状 · `stacked_bar` 堆叠柱状 · `grouped_bar` 分组柱状 ·
+`scatter` 散点 · `bubble` 气泡 · `pie` 饼图 · `donut` 环形 · `area` 面积 · `candlestick` K线 ·
+`box` 箱线 · `violin` 小提琴 · `histogram` 直方 · `heatmap` 热力（相关性/透视） · `radar` 雷达 ·
+`waterfall` 瀑布 · `funnel` 漏斗 · `step` 步进 · `polar` 极坐标 · `errorbar` 误差条 ·
+`treemap` 矩形树 · `scatter3d` 3D散点 · `surface` 3D曲面
+
+图表保存到 `charts/` 目录，文件名带时间戳，不会覆盖旧图。K线图遵循中国习惯：红涨绿跌。
+
+### analyze 的分析类型（analysis 参数）
+
+| 类型 | 说明 |
+|---|---|
+| `describe` | 描述性统计：均值、标准差、分位数、偏度、峰度、缺失值 |
+| `correlation` | Pearson 相关矩阵 + 显著性 p 值（星标）与显著相关对 |
+| `groupby` | 分组统计：mean/sum/count/std/median/min/max |
+| `regression` | OLS 线性回归：系数、标准误、t 值、p 值、R²、F 检验 |
+| `test` | 显著性检验：`ttest`（两组）/ `anova`（多组） |
+| `trend` | 时间趋势：总增幅、CAGR、平均环比、线性趋势 |
+| `report` | 自动生成论文风格 Markdown 报告（`ai_comment=True` 时由 DeepSeek 撰写结论建议），输出到 `reports/` |
+
+`ask` 支持的说法示例：`用第1个`、`查看第1个`、`画柱状图，x轴用月份，y轴用利润`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`、`查一下知识库：茅台的估值`、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
+
+## 数据链说明
+
+### 工作原理
+
+- 文件第一次被读取 → 生成「初始快照」记录（区块）
+- 之后每次内容变化 → 追加新记录，包含：时间、操作（创建/修改/删除）、前后哈希、大小、**具体改动**（新增/删除的行及内容、修改的单元格前后值）
+- 每条记录的 `prev_hash` 指向上一条的 `record_hash`，形成不可篡改的哈希链
+- 每次变化保存一份文件快照，供差异对比和日后恢复
+
+### 存储结构
+
+```
+data_chain/
+├── ledger.json     # 账本（区块记录 + 链头哈希）
+├── tracked.json    # 跟踪清单
+├── cleanup.json    # 清理登记（已归档 / 已删除的快照）
+├── snapshots/      # 在库快照
+└── archive/        # 归档快照
+```
+
+### 快照清理与校验
+
+- 清理只动快照文件，**账本区块保持不可变**；清理动作登记到 `cleanup.json`
+- `chain_verify` 检查四层：链内哈希衔接、在库快照哈希、归档快照哈希（已清理的跳过）、当前文件与最后记录的对照（发现未记录的变更）
+- 清理时每文件至少保留最近 1 版快照，保证后续差异对比可用
+
+### 使用示例
+
+```
+跟踪桌面上的销售数据.csv
+检查一下这个文件有没有变化
+查一下 销售数据.csv 的历史记录
+查看记录 #3 具体改了什么
+清理历史快照（每文件保留最近 5 版，归档）
+校验数据链完整性
+```
+
+## 安装与运行
+
+### 依赖
+
+- Python 3.13+
+- pip 安装：`fastmcp pandas pdfplumber openai matplotlib python-docx openpyxl xlrd pymupdf rapidocr-onnxruntime pypdf msoffcrypto-tool scipy squarify chromadb sentence-transformers yfinance`
+
+> `.xls` 需要 `xlrd`，`.xlsx` 需要 `openpyxl`，Word 需要 `python-docx`，扫描件 OCR 需要 `pymupdf` + `rapidocr-onnxruntime`，加密 Office 文件解密需要 `msoffcrypto-tool`。
+
+### Cline 注册
+
+`cline_mcp_settings.json` 已配置好：
+
+```json
+{
+  "mcpServers": {
+    "fin-terminal": {
+      "command": "C:\\Users\\liuj\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "args": ["C:\\Users\\liuj\\Desktop\\finterminal-mcp\\mcp_server.py"]
+    }
+  }
+}
+```
+
+> 注意：代码改动后需在 Cline 中断开重连 `fin-terminal`（或重载窗口）才会加载新代码。
+
+### 配置
+
+- `config.json`：DeepSeek API Key、模型名、桌面路径；API Key 优先读取环境变量 `DEEPSEEK_API_KEY`，模型名可用环境变量 `DEEPSEEK_MODEL` 覆盖
+- `session.json`：会话状态持久化（搜索结果、选中文件、列名），自动维护
+
+```json
+{
+  "deepseek_api_key": "sk-...",
+  "deepseek_model": "deepseek-v4-flash",
+  "desktop_dir": "C:/Users/liuj/Desktop"
+}
+```
+
+## 目录结构
+
+```
+finterminal-mcp/
+├── mcp_server.py          # MCP 服务器主逻辑（12 个业务工具）
+├── data_chain.py          # 数据链模块（8 个 chain_* 工具）
+├── analysis.py            # 统计分析模块（7 个 stat_*/generate_report 工具）
+├── charts.py              # 图表模块（24 种图表）
+├── market_data.py         # 实时行情数据源（腾讯/yfinance）
+├── vision_ocr.py          # 多模态图片解析（OCR + 表格还原）
+├── knowledge.py           # RAG 知识库（chromadb + 向量嵌入）
+├── config.json            # API Key 配置
+├── session.json           # 会话状态
+├── cline_mcp_settings.json# Cline 注册配置
+├── charts/                # 图表输出
+├── reports/               # 自动报告输出
+├── cleaned/               # 清洗结果输出（save=True 时）
+├── knowledge/             # RAG 知识库持久化（首次添加文档时创建）
+└── data_chain/            # 数据链数据（首次使用自动创建）
+```
+
+## 已知限制
+
+- 实时行情基于腾讯公开接口（无需密钥）；海外标的回退 yfinance，需要可访问 Yahoo 的网络
+- 图表已扩展到 24 种，但暂不支持词云、桑基图等特殊类型
+- 数据链为本地单机账本，尚未接入真实区块链/多方同步
