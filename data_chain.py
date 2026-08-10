@@ -361,12 +361,17 @@ def _append_record(ledger, record, snapshot_source=None):
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         dest = SNAPSHOT_DIR / f"{record['id']}__{os.path.basename(snapshot_source)}"
         if _encrypt_enabled():
-            # 加密快照：写入 AES-GCM 密文，内容差异降级为哈希+大小
-            with open(snapshot_source, "rb") as f:
-                plain = f.read()
-            import crypto_utils
-            dest.write_bytes(crypto_utils.encrypt_bytes(plain))
-            record["snapshot_encrypted"] = True
+            try:
+                # 加密快照：写入 AES-GCM 密文，内容差异降级为哈希+大小
+                with open(snapshot_source, "rb") as f:
+                    plain = f.read()
+                import crypto_utils
+                dest.write_bytes(crypto_utils.encrypt_bytes(plain))
+                record["snapshot_encrypted"] = True
+            except Exception:
+                # 密钥不可用等异常：降级为明文快照并打标记，绝不静默丢记录
+                shutil.copy2(snapshot_source, dest)
+                record["snapshot_encrypted_failed"] = True
         else:
             shutil.copy2(snapshot_source, dest)
         # 存相对路径（相对 data_chain/），避免项目目录移动后哈希失效
@@ -853,6 +858,7 @@ def status():
     snap_count = sum(1 for r in records if r.get("snapshot") and os.path.exists(_snapshot_path(r["snapshot"])))
     arch_count = len(cleanup_data.get("archived", {}))
     pruned_count = len(cleanup_data.get("pruned", []))
+    enc_failed = sum(1 for r in records if r.get("snapshot_encrypted_failed"))
 
     def _dir_size(d):
         if not os.path.isdir(d):
@@ -873,6 +879,8 @@ def status():
         f"快照: 在库 {snap_count} 个 / 归档 {arch_count} / 已清理 {pruned_count}（占用约 {size_kb:.1f} KB）",
         f"时间戳锚点: {len(anchors)} 个",
     ]
+    if enc_failed:
+        lines.append(f"⚠️ 快照加密异常 {enc_failed} 个（密钥不可用，已降级为明文快照，请检查 FIN_ENC_KEY/凭据管理器）")
     for p in tracked[:20]:
         lines.append(f"  - {p}")
     if records:
