@@ -86,20 +86,39 @@ def kline(symbol, days=60):
     import json as _json
     import urllib.request
 
-    norm = _normalize_symbol(symbol)
-    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={norm},day,,,{days},qfq"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = _json.loads(resp.read().decode("utf-8", errors="replace"))
-    node = data.get("data", {}).get(norm, {})
-    rows = node.get("qfqday") or node.get("day") or []
-    if not rows:
-        raise ValueError(f"未获取到K线数据（{norm}）")
     import pandas as pd
-    df = pd.DataFrame([r[:6] for r in rows], columns=["日期", "开盘", "收盘", "最高", "最低", "成交量"])
-    for c in ("开盘", "收盘", "最高", "最低", "成交量"):
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df
+    try:
+        norm = _normalize_symbol(symbol)
+        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={norm},day,,,{days},qfq"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read().decode("utf-8", errors="replace"))
+        node = data.get("data", {}).get(norm, {})
+        rows = node.get("qfqday") or node.get("day") or []
+        if not rows:
+            raise ValueError(f"未获取到K线数据（{norm}）")
+        df = pd.DataFrame([r[:6] for r in rows], columns=["日期", "开盘", "收盘", "最高", "最低", "成交量"])
+        for c in ("开盘", "收盘", "最高", "最低", "成交量"):
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df
+    except Exception as e:
+        # 海外标的回退 yfinance（需可访问 Yahoo）
+        try:
+            import yfinance as yf
+            t = yf.Ticker(symbol)
+            h = t.history(period=f"{days}d")
+            if h.empty:
+                raise ValueError("无历史数据")
+            return pd.DataFrame({
+                "日期": h.index.strftime("%Y-%m-%d"),
+                "开盘": h["Open"].to_numpy(), "收盘": h["Close"].to_numpy(),
+                "最高": h["High"].to_numpy(), "最低": h["Low"].to_numpy(),
+                "成交量": h["Volume"].to_numpy(),
+            })
+        except ImportError:
+            raise ValueError(f"腾讯K线获取失败: {e}（未安装 yfinance，无法回退海外K线）") from e
+        except Exception as e2:
+            raise ValueError(f"腾讯与 yfinance 均获取失败（{symbol}）: {e} / {e2}") from e2
 
 
 def indicators(df):
@@ -135,9 +154,14 @@ def indicators(df):
 def forecast(symbol, days=120, horizon=10):
     """基于线性趋势的简单价格预测（含 95% 近似置信区间）。
     返回 (原始K线+指标 DataFrame, 预测 DataFrame)。"""
+    df = kline(symbol, days)
+    return indicators(df), forecast_from_df(df, horizon)
+
+
+def forecast_from_df(df, horizon=10):
+    """基于已有 K 线 DataFrame 做线性趋势预测。返回预测 DataFrame。"""
     import numpy as np
     import pandas as pd
-    df = indicators(kline(symbol, days))
     y = df["收盘"].to_numpy(dtype=float)
     n = len(y)
     x = np.arange(n)
@@ -154,4 +178,4 @@ def forecast(symbol, days=120, horizon=10):
         "上界": np.round(fy + band, 2),
     })
     fdf["日期"] = [f"T+{i}" for i in range(1, horizon + 1)]
-    return df, fdf
+    return fdf

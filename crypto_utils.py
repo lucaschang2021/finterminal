@@ -23,6 +23,13 @@ def _get_key():
         import keyring
         stored = keyring.get_password(KEYRING_SERVICE, KEYRING_USER)
         if stored:
+            # 兼容两种存储形态：base64(32字节) 或 原始字符串
+            try:
+                decoded = base64.b64decode(stored)
+                if len(decoded) >= 32:
+                    return decoded[:32]
+            except Exception:
+                pass
             return stored.encode("utf-8")[:32].ljust(32, b"\0")
         new_key = os.urandom(32)
         keyring.set_password(KEYRING_SERVICE, KEYRING_USER, base64.b64encode(new_key).decode())

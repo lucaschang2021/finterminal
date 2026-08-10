@@ -956,6 +956,8 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, **kwarg
         _chain_record(file_path)
         if source == "api":
             # 实时行情来源：直接拉取日K线（如 K线图/收盘价走势）
+            if chart_type not in ("candlestick", "line", "technical", "area", "step"):
+                return f"❌ 行情来源（source='api'）仅支持走势类图表：candlestick / line / technical / area / step"
             df = market_data.kline(file_path, days)
             if chart_type == "technical":
                 df = market_data.indicators(df)
@@ -1638,14 +1640,15 @@ def research_agent(topic, symbol=None, top_k=3, save=True):
             q = {}
             quote_txt = f"（行情获取失败: {e}）"
 
-        ind = market_data.indicators(market_data.kline(symbol, 120))
+        kdf = market_data.kline(symbol, 120)
+        ind = market_data.indicators(kdf)
         last = ind.iloc[-1]
         tech_txt = (f"MA5={last['MA5']:.2f} MA20={last['MA20']:.2f} MA60={last['MA60']:.2f} "
                     f"MACD={last['MACD']:.3f} RSI={last['RSI']:.1f} "
                     f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
 
         trend_df, period = analysis.trend(ind, date_column="日期", value_columns="收盘")
-        _df, fdf = market_data.forecast(symbol, 120, 10)
+        fdf = market_data.forecast_from_df(kdf, 10)
         docs = knowledge.query(topic, top_k)
 
         ai_input = [f"行情: {quote_txt}", f"技术面: {tech_txt}",
@@ -1869,6 +1872,8 @@ def read(file_path: str = None, source: str = "local", sheet_name: str = None,
         if kline:
             return _market_kline(file_path, days)
         return _market_quote(file_path)
+    if not file_path:
+        return "❌ 请提供 file_path（本地文件路径），或使用 source='api' 查询行情"
     ext = Path(file_path).suffix.lower()
     if vision_ocr.is_image(file_path):
         return _vision_analyze(file_path)
