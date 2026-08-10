@@ -14,6 +14,7 @@ RAG 知识库模块（FinTerminal）
 
 import datetime
 import os
+import re
 from pathlib import Path
 
 # 国内镜像：模型下载走 hf-mirror，避免网络问题
@@ -29,11 +30,18 @@ _embedder = None
 def _get_embedder():
     global _embedder
     if _embedder is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-        except Exception:
-            _embedder = False  # 标记不可用，回退 chroma 内置
+        # 仅当模型已本地缓存时才用 sentence-transformers，
+        # 避免离线/首次使用时联网重试拖慢回退到 chroma ONNX
+        hub_dir = os.path.join(Path.home(), ".cache", "huggingface", "hub",
+                               "models--sentence-transformers--all-MiniLM-L6-v2")
+        if os.path.isdir(hub_dir):
+            try:
+                from sentence_transformers import SentenceTransformer
+                _embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            except Exception:
+                _embedder = False
+        else:
+            _embedder = False
     return _embedder or None
 
 
@@ -89,22 +97,45 @@ def _extract_text(path):
     return ""
 
 
+def _split_units(text):
+    """把文本切成语义单元：优先段落（空行分隔），其次句子（中文/英文标点）。"""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    if len(paragraphs) > 1:
+        return paragraphs
+    sentences = [s.strip() for s in re.split(r"(?<=[。！？；!?;\n])", paragraphs[0]) if s.strip()]
+    return sentences if len(sentences) > 1 else [paragraphs[0]]
+
+
 def _chunk(text, size=500, overlap=80):
-    """按字符切块，块间有重叠以保证语义连贯。"""
+    """语义分块：以段落/句子为边界聚合，避免在句子中间硬切；超长单元内部二次切分。"""
     text = text.strip()
     if not text:
         return []
+    units = _split_units(text)
     chunks = []
-    start = 0
-    n = len(text)
-    while start < n:
-        chunks.append(text[start:start + size])
-        start += size - overlap
-    return chunks
+    buf = ""
+    for u in units:
+        if len(u) > size:
+            if buf:
+                chunks.append(buf)
+                buf = ""
+            for piece in _split_units(u):
+                if len(buf) + len(piece) > size and buf:
+                    chunks.append(buf)
+                    buf = buf[-overlap:] if overlap else ""
+                buf += piece
+            continue
+        if len(buf) + len(u) > size and buf:
+            chunks.append(buf)
+            buf = buf[-overlap:] if overlap else ""
+        buf += ("" if not buf else "\n") + u
+    if buf.strip():
+        chunks.append(buf)
+    return [c.strip() for c in chunks if c.strip()]
 
 
 def add_document(file_path):
-    """把文件内容向量化加入知识库，返回切片数量。"""
+    """把文件内容向量化加入知识库（同源文件重复添加=更新替换），返回切片数量。"""
     text = _extract_text(file_path)
     if not text.strip():
         raise ValueError("未能从文件中提取文本内容（不支持的类型或文件为空）")
@@ -112,9 +143,14 @@ def add_document(file_path):
     if not chunks:
         raise ValueError("文件内容为空")
     col = _get_collection()
+    source = str(Path(file_path).resolve())
+    # 同源旧片段先删除，实现"重新添加即更新"
+    old = col.get(where={"source": source}, include=[])
+    if old and old.get("ids"):
+        col.delete(ids=old["ids"])
     stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
     ids = [f"{Path(file_path).stem}-{i}-{stamp}" for i in range(len(chunks))]
-    metas = [{"source": str(file_path), "chunk": i, "added": stamp} for i in range(len(chunks))]
+    metas = [{"source": source, "chunk": i, "added": stamp} for i in range(len(chunks))]
     col.add(ids=ids, documents=chunks, embeddings=_embed(chunks), metadatas=metas)
     return len(chunks)
 
@@ -143,6 +179,41 @@ def status():
     """知识库状态。"""
     try:
         col = _get_collection()
-        return {"片段数": col.count()}
+        data = col.get(include=["metadatas"])
+        ids = data.get("ids", []) or []
+        sources = {(m or {}).get("source", "未知") for m in (data.get("metadatas", []) or [])}
+        return {"片段数": len(ids), "来源数": len(sources)}
     except Exception as e:
-        return {"片段数": 0, "错误": str(e)}
+        return {"片段数": 0, "来源数": 0, "错误": str(e)}
+
+
+def remove_document(file_path):
+    """按来源路径删除某个文档的所有片段。返回删除数量。"""
+    col = _get_collection()
+    source = str(Path(file_path).resolve())
+    old = col.get(where={"source": source}, include=[])
+    ids = old.get("ids", []) or []
+    if ids:
+        col.delete(ids=ids)
+    return len(ids)
+
+
+def clear():
+    """清空整个知识库。返回删除片段数。"""
+    col = _get_collection()
+    data = col.get(include=[])
+    ids = data.get("ids", []) or []
+    if ids:
+        col.delete(ids=ids)
+    return len(ids)
+
+
+def list_sources():
+    """列出知识库中的所有文档来源及片段数。"""
+    col = _get_collection()
+    data = col.get(include=["metadatas"])
+    counts = {}
+    for m in data.get("metadatas", []) or []:
+        s = (m or {}).get("source", "未知")
+        counts[s] = counts.get(s, 0) + 1
+    return counts

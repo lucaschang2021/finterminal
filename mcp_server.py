@@ -1168,6 +1168,14 @@ def _dispatch_tool(tool_name, tool_args):
         return knowledge_query(**tool_args)
     elif tool_name == "knowledge_fusion":
         return knowledge_fusion(**tool_args)
+    elif tool_name == "knowledge_clear":
+        return knowledge_clear(**tool_args)
+    elif tool_name == "knowledge_remove":
+        return knowledge_remove(**tool_args)
+    elif tool_name == "knowledge_list":
+        return knowledge_list(**tool_args)
+    elif tool_name == "knowledge_status":
+        return knowledge_status(**tool_args)
     raise ValueError(f"未知工具: {tool_name}")
 
 
@@ -1351,6 +1359,10 @@ def ask(query: str):
             {"type": "function", "function": {"name": "knowledge_add", "description": "把文件加入 RAG 知识库", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "knowledge_query", "description": "检索知识库相关内容", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
             {"type": "function", "function": {"name": "knowledge_fusion", "description": "结合知识库与实时行情做综合分析", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "symbol": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
+            {"type": "function", "function": {"name": "knowledge_clear", "description": "清空整个知识库", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "knowledge_remove", "description": "按文件路径从知识库移除文档", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
+            {"type": "function", "function": {"name": "knowledge_list", "description": "列出知识库中的文档", "parameters": {"type": "object", "properties": {}}}},
+            {"type": "function", "function": {"name": "knowledge_status", "description": "查看知识库状态", "parameters": {"type": "object", "properties": {}}}},
         ]
 
         for round_idx in range(1, MAX_TOOL_ROUNDS + 1):
@@ -1518,6 +1530,49 @@ def knowledge_fusion(query_text, symbol=None, top_k=3):
         return out
     except Exception as e:
         return f"❌ 融合分析失败: {e}"
+
+
+def knowledge_clear():
+    """清空整个知识库（供 ask 内部调用）。"""
+    try:
+        n = knowledge.clear()
+        return f"✅ 知识库已清空（删除 {n} 个片段）"
+    except Exception as e:
+        return f"❌ 清空知识库失败: {e}"
+
+
+def knowledge_remove(file_path):
+    """按来源移除某个文档（供 ask 内部调用）。"""
+    try:
+        n = knowledge.remove_document(file_path)
+        return f"✅ 已从知识库移除: {file_path}（{n} 个片段）"
+    except Exception as e:
+        return f"❌ 移除失败: {e}"
+
+
+def knowledge_list():
+    """列出知识库中的文档（供 ask 内部调用）。"""
+    try:
+        counts = knowledge.list_sources()
+        if not counts:
+            return "📚 知识库为空"
+        lines = ["📚 知识库文档清单："]
+        for src, n in sorted(counts.items()):
+            lines.append(f"  - {src}（{n} 个片段）")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ 查询失败: {e}"
+
+
+def knowledge_status():
+    """知识库状态（供 ask 内部调用）。"""
+    try:
+        st = knowledge.status()
+        if st.get("错误"):
+            return f"❌ 知识库状态: {st['错误']}"
+        return f"📚 知识库状态：{st['片段数']} 个片段，{st['来源数']} 个来源"
+    except Exception as e:
+        return f"❌ 状态查询失败: {e}"
 
 
 # ==================== Phase 8: 意图路由与消歧 ====================
