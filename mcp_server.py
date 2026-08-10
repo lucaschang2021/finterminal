@@ -948,14 +948,18 @@ def _load_data(file_path: str):
     else:
         raise ValueError(f"不支持的文件类型: {ext}")
 
-def _plot(chart_type, file_path, password=None, **kwargs):
+def _plot(chart_type, file_path, password=None, source="local", days=60, **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
     tmp_path = None
     try:
         # 数据链：自动记录该文件的变更历史
         _chain_record(file_path)
-        eff_path, tmp_path = _maybe_decrypt(file_path, password)
-        df = _load_data(eff_path)
+        if source == "api":
+            # 实时行情来源：直接拉取日K线（如 K线图/收盘价走势）
+            df = market_data.kline(file_path, days)
+        else:
+            eff_path, tmp_path = _maybe_decrypt(file_path, password)
+            df = _load_data(eff_path)
         fig = charts.build_figure(chart_type, df, **kwargs)
         save_path = _save_chart(fig, chart_type)
         return f"✅ 图表已保存: {save_path}"
@@ -996,6 +1000,8 @@ def plot_chart(
     error_column: str = None,
     title: str = None,
     password: str = None,
+    source: str = "local",
+    days: int = 60,
 ):
     """通用图表工具，支持 24 种图表类型。
 
@@ -1006,7 +1012,8 @@ def plot_chart(
     return _plot(chart_type, file_path, password=password, x_column=x_column, y_column=y_column,
                  y_columns=y_columns, value_column=value_column, open_column=open_column,
                  high_column=high_column, low_column=low_column, close_column=close_column,
-                 size_column=size_column, error_column=error_column, title=title)
+                 size_column=size_column, error_column=error_column, title=title,
+                 source=source, days=days)
 
 
 # ==================== Phase 3: 自然语言交互 ====================
@@ -1335,9 +1342,9 @@ def ask(query: str):
         ]
         tools = [
             {"type": "function", "function": {"name": "search", "description": "搜索文件（keyword 留空则列出数据文件）", "parameters": {"type": "object", "properties": {"keyword": {"type": "string"}, "directory": {"type": "string"}, "recursive": {"type": "boolean"}}}}},
-            {"type": "function", "function": {"name": "read", "description": "读取：本地文件（CSV/Excel/Word/PDF/文本/图片OCR）或 source=api 实时行情", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "source": {"type": "string"}, "sheet_name": {"type": "string"}, "max_pages": {"type": "integer"}, "ocr": {"type": "boolean"}, "password": {"type": "string"}}}}},
+            {"type": "function", "function": {"name": "read", "description": "读取：本地文件（CSV/Excel/Word/PDF/文本/图片OCR）或 source=api 实时行情/日K线（kline=True）", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "source": {"type": "string"}, "sheet_name": {"type": "string"}, "max_pages": {"type": "integer"}, "ocr": {"type": "boolean"}, "password": {"type": "string"}, "kline": {"type": "boolean"}, "days": {"type": "integer"}}}}},
             {"type": "function", "function": {"name": "detect", "description": "文件体检：格式/加密/损坏检测", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
-            {"type": "function", "function": {"name": "plot", "description": "画图，24 种类型：line/bar/pie/candlestick/heatmap/radar 等", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}}, "required": ["chart_type", "file_path"]}}},
+            {"type": "function", "function": {"name": "plot", "description": "画图，24 种类型；source=api 时 file_path 填股票代码画K线/走势", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}, "source": {"type": "string"}, "days": {"type": "integer"}}, "required": ["chart_type", "file_path"]}}},
             {"type": "function", "function": {"name": "clean", "description": "清洗杂乱数据", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "chain", "description": "数据链：status/track/untrack/snapshot/history/show/cleanup/verify", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "path": {"type": "string"}, "file_path": {"type": "string"}, "record_id": {"type": "string"}, "keep_versions": {"type": "integer"}, "max_age_days": {"type": "integer"}, "archive": {"type": "boolean"}, "check_live": {"type": "boolean"}, "quick": {"type": "boolean"}}}}},
@@ -1413,6 +1420,22 @@ def _market_quote(symbol):
         return "\n".join(lines)
     except Exception as e:
         return f"❌ 行情获取失败: {e}"
+
+
+def _market_kline(symbol, days=60):
+    """历史日K线：read(source="api", kline=True)。"""
+    try:
+        df = market_data.kline(symbol, days)
+        lines = [f"📊 {symbol} 日K线（最近 {len(df)} 个交易日，前复权）",
+                 "  日期        开盘     收盘     最高     最低      成交量(手)"]
+        for _, r in df.tail(min(20, len(df))).iterrows():
+            lines.append(f"  {r['日期']}  {r['开盘']:>8.2f} {r['收盘']:>8.2f} "
+                         f"{r['最高']:>8.2f} {r['最低']:>8.2f} {r['成交量']:>10.0f}")
+        lines.append(f"\n📌 来源：腾讯日K行情（{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}）")
+        lines.append("如需画K线图：plot(chart_type='candlestick', file_path='代码', source='api')")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ K线获取失败: {e}"
 
 
 def _vision_parse(file_path):
@@ -1616,9 +1639,13 @@ def _context_ops(session):
 
 @mcp.tool
 def read(file_path: str = None, source: str = "local", sheet_name: str = None,
-         max_pages: int = 3, ocr: bool = True, password: str = None):
-    """读取数据。source="local" 读本地文件（含图片视觉解析）；source="api" 查实时行情（file_path 填股票代码，如 sh600519）。"""
+         max_pages: int = 3, ocr: bool = True, password: str = None,
+         kline: bool = False, days: int = 60):
+    """读取数据。source="local" 读本地文件（含图片视觉解析）；source="api" 查行情（file_path 填股票代码）；
+    kline=True 时返回历史日K线（days 控制天数）。"""
     if source == "api":
+        if kline:
+            return _market_kline(file_path, days)
         return _market_quote(file_path)
     ext = Path(file_path).suffix.lower()
     if vision_ocr.is_image(file_path):
@@ -1638,12 +1665,14 @@ def read(file_path: str = None, source: str = "local", sheet_name: str = None,
 def plot(chart_type: str, file_path: str, x_column: str = None, y_column: str = None,
          y_columns: str = None, value_column: str = None, open_column: str = None,
          high_column: str = None, low_column: str = None, close_column: str = None,
-         size_column: str = None, error_column: str = None, title: str = None, password: str = None):
-    """画图，支持 24 种图表类型（chart_type: line/bar/pie/candlestick/heatmap/radar 等）。"""
+         size_column: str = None, error_column: str = None, title: str = None,
+         password: str = None, source: str = "local", days: int = 60):
+    """画图，支持 24 种图表类型；source="api" 时 file_path 填股票代码，直接画实时/历史K线或走势。"""
     return plot_chart(chart_type, file_path, x_column=x_column, y_column=y_column,
                       y_columns=y_columns, value_column=value_column, open_column=open_column,
                       high_column=high_column, low_column=low_column, close_column=close_column,
-                      size_column=size_column, error_column=error_column, title=title, password=password)
+                      size_column=size_column, error_column=error_column, title=title,
+                      password=password, source=source, days=days)
 
 
 @mcp.tool

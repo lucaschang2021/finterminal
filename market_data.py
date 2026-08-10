@@ -79,3 +79,24 @@ def quote(symbol):
             "涨跌幅%": None, "成交量": getattr(info, "last_volume", None),
             "来源": "yfinance",
         }
+
+
+def kline(symbol, days=60):
+    """获取日K线（前复权）。返回 DataFrame：日期/开盘/收盘/最高/最低/成交量。"""
+    import json as _json
+    import urllib.request
+
+    norm = _normalize_symbol(symbol)
+    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={norm},day,,,{days},qfq"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = _json.loads(resp.read().decode("utf-8", errors="replace"))
+    node = data.get("data", {}).get(norm, {})
+    rows = node.get("qfqday") or node.get("day") or []
+    if not rows:
+        raise ValueError(f"未获取到K线数据（{norm}）")
+    import pandas as pd
+    df = pd.DataFrame([r[:6] for r in rows], columns=["日期", "开盘", "收盘", "最高", "最低", "成交量"])
+    for c in ("开盘", "收盘", "最高", "最低", "成交量"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df

@@ -19,7 +19,7 @@
 | 数据清洗 | `clean` 自动处理脏数据：空行/空列、重复行、空白、重复列名 |
 | 统计分析 | 描述统计、相关分析（显著性）、分组统计、回归、t 检验/ANOVA、时间趋势 |
 | 自动报告 | `analyze(analysis="report")` 生成论文风格 Markdown 报告，可选 AI 结论建议 |
-| 实时数据源 | `read(source="api")` 获取 A股/港股/美股实时行情（腾讯接口，海外可回退 yfinance） |
+| 实时数据源 | `read(source="api")` 获取实时行情 + 历史日K线（腾讯接口，海外回退 yfinance），`plot` 可直接画K线图 |
 | 多模态视觉 | `read(图片路径)` 自动 OCR 图片文字并还原表格数据 |
 | RAG 知识库 | "添加到知识库"/"查一下知识库"/"结合研报和行情分析"，本地向量检索 + 多源融合 |
 
@@ -27,10 +27,10 @@
 
 | 工具 | 说明 |
 |---|---|
-| `read(file_path=None, source="local", sheet_name=None, max_pages=3, ocr=True, password=None)` | 读取数据：`source="local"` 读文件（含图片 OCR/表格还原），`source="api"` 查实时行情（file_path 填股票代码） |
+| `read(file_path=None, source="local", sheet_name=None, max_pages=3, ocr=True, password=None, kline=False, days=60)` | 读取数据：`source="local"` 读文件（含图片 OCR/表格还原）；`source="api"` 查行情（`kline=True` 返回历史日K线） |
 | `detect(path)` | 文件体检：格式匹配、加密、损坏、空文件检测 |
 | `clean(file_path, save=False, password=None)` | 清洗杂乱数据：空行/空列、去重、修剪空白、列名规范化 |
-| `plot(chart_type, file_path, ...)` | 画图，支持 24 种类型（见下） |
+| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 24 种类型；`source="api"` 时直接画股票K线/走势图（如 `plot("candlestick", "sh600519", source="api")`） |
 | `analyze(file_path, analysis, ...)` | 统计分析统一入口：describe / correlation / groupby / regression / test / trend / report |
 | `search(keyword=None, directory=None, recursive=False)` | 搜索文件；keyword 留空列出数据文件 |
 | `chain(action, ...)` | 数据链统一入口：status / track / untrack / snapshot / history / show / cleanup / verify |
@@ -129,7 +129,8 @@ data_chain/
 
 ### 配置
 
-- `config.json`：DeepSeek API Key、模型名、桌面路径；API Key 优先读取环境变量 `DEEPSEEK_API_KEY`，模型名可用环境变量 `DEEPSEEK_MODEL` 覆盖
+- **API Key 保护**：密钥保存在 Windows 凭据管理器，`config.json` 不含明文。设置方式：`python set_api_key.py sk-你的密钥`；读取优先级：环境变量 `DEEPSEEK_API_KEY` > 凭据管理器 > `config.json`（迁移兜底）
+- `config.json`：模型名、桌面路径等非敏感配置；模板见 `config.example.json`
 - `session.json`：会话状态持久化（搜索结果、选中文件、列名），自动维护
 
 ```json
