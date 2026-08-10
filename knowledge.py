@@ -27,6 +27,18 @@ _collection = None
 _embedder = None
 
 
+def _encrypt_enabled():
+    """知识库内容加密开关：环境变量 FIN_KB_ENCRYPT=1 或 config.json 的 encrypt_knowledge=true。"""
+    if os.environ.get("FIN_KB_ENCRYPT", "").lower() in ("1", "true", "yes"):
+        return True
+    try:
+        import json
+        cfg = json.load(open(Path(__file__).parent / "config.json", encoding="utf-8"))
+        return bool(cfg.get("encrypt_knowledge", False))
+    except Exception:
+        return False
+
+
 def _get_embedder():
     global _embedder
     if _embedder is None:
@@ -151,7 +163,11 @@ def add_document(file_path):
     stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
     ids = [f"{Path(file_path).stem}-{i}-{stamp}" for i in range(len(chunks))]
     metas = [{"source": source, "chunk": i, "added": stamp} for i in range(len(chunks))]
-    col.add(ids=ids, documents=chunks, embeddings=_embed(chunks), metadatas=metas)
+    docs = chunks
+    if _encrypt_enabled():
+        import crypto_utils
+        docs = [crypto_utils.encrypt_bytes(c.encode("utf-8")).decode("ascii") for c in chunks]
+    col.add(ids=ids, documents=docs, embeddings=_embed(chunks), metadatas=metas)
     return len(chunks)
 
 
@@ -167,6 +183,12 @@ def query(query_text, top_k=5):
     out = []
     for i, doc in enumerate(res["documents"][0]):
         meta = res["metadatas"][0][i] or {}
+        if isinstance(doc, str) and doc.startswith("enc:v1:"):
+            try:
+                import crypto_utils
+                doc = crypto_utils.decrypt_bytes(doc.encode("ascii")).decode("utf-8")
+            except Exception:
+                doc = "[加密内容无法解密]"
         out.append({
             "来源": meta.get("source", "未知"),
             "距离": round(float(res["distances"][0][i]), 4),

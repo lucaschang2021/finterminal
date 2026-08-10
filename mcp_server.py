@@ -1587,13 +1587,43 @@ _SKIP_MARKET = ("添加", "入库", "清洗", "画", "统计", "报告", "生成
 _MARKET_NAMES = {
     "贵州茅台": "sh600519", "茅台": "sh600519",
     "五粮液": "sz000858",
+    "山西汾酒": "sh600809", "泸州老窖": "sz000568", "洋河股份": "sz002304",
+    "古井贡酒": "sz000596", "伊利股份": "sh600887", "海天味业": "sh603288",
     "宁德时代": "sz300750",
     "比亚迪": "sz002594",
-    "平安银行": "sz000001", "招商银行": "sh600036",
+    "隆基绿能": "sh601012", "通威股份": "sh600438", "中芯国际": "sh688981",
+    "恒瑞医药": "sh600276", "药明康德": "sh603259", "迈瑞医疗": "sz300760",
+    "片仔癀": "sh600436", "云南白药": "sz000538", "长江电力": "sh600900",
+    "中国中免": "sh601888", "东方财富": "sz300059", "同花顺": "sz300033",
+    "中国平安": "sh601318", "中信证券": "sh600030", "招商银行": "sh600036",
+    "平安银行": "sz000001", "工商银行": "sh601398", "建设银行": "sh601939",
+    "农业银行": "sh601288", "中国银行": "sh601988", "交通银行": "sh601328",
+    "兴业银行": "sh601166", "浦发银行": "sh600000", "民生银行": "sh600016",
+    "万科": "sz000002", "保利发展": "sh600048", "美的集团": "sz000333",
+    "格力电器": "sz000651", "海尔智家": "sh600690",
+    "三一重工": "sh600031", "工业富联": "sh601138", "京东方": "sz000725",
+    "中国石油": "sh601857", "中国石化": "sh600028", "中国神华": "sh601088",
+    "中国移动": "sh600941", "中国联通": "sh600050", "中国电信": "sh601728",
+    "中远海控": "sh601919", "顺丰控股": "sz002352", "中国建筑": "sh601668",
     "腾讯": "hk00700", "阿里巴巴": "hk09988", "阿里": "hk09988",
+    "美团": "hk03690", "小米": "hk01810", "快手": "hk01024", "网易": "hk09999",
     "苹果": "AAPL", "特斯拉": "TSLA", "英伟达": "NVDA",
-    "微软": "MSFT", "谷歌": "GOOGL", "亚马逊": "AMZN",
+    "微软": "MSFT", "谷歌": "GOOGL", "亚马逊": "AMZN", "Meta": "META",
+    "京东": "JD", "拼多多": "PDD", "百度": "BIDU",
+    "蔚来": "NIO", "理想": "LI", "小鹏": "XPEV",
 }
+
+
+def _get_market_names():
+    """合并内置股票名称表 + config.json 的 market_names 扩展（可覆盖默认）。"""
+    try:
+        cfg = json.load(open(CONFIG_FILE, encoding="utf-8"))
+        extra = cfg.get("market_names") or {}
+        names = dict(_MARKET_NAMES)
+        names.update(extra)
+        return names
+    except Exception:
+        return _MARKET_NAMES
 
 
 def _detect_time_intent(query):
@@ -1615,7 +1645,7 @@ def _extract_market_symbol(query):
     m = re.search(r"\b(\d{6})\b", query)
     if m:
         return m.group(1), m.group(1)
-    for name, code in _MARKET_NAMES.items():
+    for name, code in _get_market_names().items():
         if name in query:
             return code, name
     return None, None

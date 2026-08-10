@@ -53,6 +53,18 @@ TABLE_ROW_LIMIT = 5000     # 超过该行数不做逐行对比，只记录概要
 _CHAIN_LOCK = threading.Lock()
 
 
+def _encrypt_enabled():
+    """快照加密开关：环境变量 FIN_SNAP_ENCRYPT=1 或 config.json 的 encrypt_snapshots=true。"""
+    if os.environ.get("FIN_SNAP_ENCRYPT", "").lower() in ("1", "true", "yes"):
+        return True
+    try:
+        import json
+        cfg = json.load(open(Path(__file__).parent / "config.json", encoding="utf-8"))
+        return bool(cfg.get("encrypt_snapshots", False))
+    except Exception:
+        return False
+
+
 # ==================== 基础工具 ====================
 
 def _now():
@@ -65,6 +77,16 @@ def _sha256_file(path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _snapshot_plain_hash(path, encrypted):
+    """计算快照的明文哈希：加密快照先解密再哈希，与 file_hash_after 可比对。"""
+    if encrypted:
+        with open(path, "rb") as f:
+            raw = f.read()
+        import crypto_utils
+        return hashlib.sha256(crypto_utils.decrypt_bytes(raw)).hexdigest()
+    return _sha256_file(path)
 
 
 def _canonical(path: str) -> str:
@@ -326,7 +348,15 @@ def _append_record(ledger, record, snapshot_source=None):
     if snapshot_source and os.path.exists(snapshot_source):
         SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
         dest = SNAPSHOT_DIR / f"{record['id']}__{os.path.basename(snapshot_source)}"
-        shutil.copy2(snapshot_source, dest)
+        if _encrypt_enabled():
+            # 加密快照：写入 AES-GCM 密文，内容差异降级为哈希+大小
+            with open(snapshot_source, "rb") as f:
+                plain = f.read()
+            import crypto_utils
+            dest.write_bytes(crypto_utils.encrypt_bytes(plain))
+            record["snapshot_encrypted"] = True
+        else:
+            shutil.copy2(snapshot_source, dest)
         # 存相对路径（相对 data_chain/），避免项目目录移动后哈希失效
         record["snapshot"] = "snapshots/" + dest.name
 
@@ -387,7 +417,9 @@ def _snapshot_one_impl(file_path):
 
     old_snapshot = last.get("snapshot")
     diff = None
-    if old_snapshot:
+    if last.get("snapshot_encrypted"):
+        diff = {"summary": "快照已加密，无法做内容差异，仅记录哈希与大小变化"}
+    elif old_snapshot:
         abs_old = _snapshot_path(old_snapshot)
         if os.path.exists(abs_old):
             diff = _compute_diff(path, abs_old, last)
@@ -553,10 +585,12 @@ def _format_record(rec):
     if rec.get("snapshot"):
         snap_abs = _snapshot_path(rec["snapshot"])
         if os.path.exists(snap_abs):
-            lines.append(f"快照: {snap_abs}")
+            enc_note = "（已加密）" if rec.get("snapshot_encrypted") else ""
+            lines.append(f"快照: {snap_abs}{enc_note}")
         elif rec.get("id") in cleanup_data.get("archived", {}):
             arch_abs = _snapshot_path(cleanup_data["archived"][rec.get("id")])
-            lines.append(f"快照（已归档）: {arch_abs}")
+            enc_note = "（已加密）" if rec.get("snapshot_encrypted") else ""
+            lines.append(f"快照（已归档）: {arch_abs}{enc_note}")
         elif rec.get("id") in cleanup_data.get("pruned", []):
             lines.append("快照（已按策略清理）")
         else:
@@ -708,7 +742,7 @@ def verify(check_live=True, quick=False):
             snap_abs = _snapshot_path(snap)
             if os.path.exists(snap_abs):
                 try:
-                    if _sha256_file(snap_abs) != fh_after:
+                    if _snapshot_plain_hash(snap_abs, bool(rec.get("snapshot_encrypted"))) != fh_after:
                         issues.append(f"记录 #{i} 快照内容与记录哈希不符（快照被改动）")
                 except Exception:
                     issues.append(f"记录 #{i} 快照无法读取: {snap_abs}")
@@ -716,7 +750,7 @@ def verify(check_live=True, quick=False):
                 arch = _snapshot_path(cleanup_data["archived"][rid])
                 if os.path.exists(arch):
                     try:
-                        if _sha256_file(arch) != fh_after:
+                        if _snapshot_plain_hash(arch, bool(rec.get("snapshot_encrypted"))) != fh_after:
                             issues.append(f"记录 #{i} 归档快照内容与记录哈希不符（归档被改动）")
                         else:
                             archived_checked += 1

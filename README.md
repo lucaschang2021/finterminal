@@ -130,7 +130,8 @@ data_chain/
 ### 配置
 
 - **API Key 保护**：密钥保存在 Windows 凭据管理器，`config.json` 不含明文。设置方式：`python set_api_key.py sk-你的密钥`；读取优先级：环境变量 `DEEPSEEK_API_KEY` > 凭据管理器 > `config.json`（迁移兜底）
-- `config.json`：模型名、桌面路径等非敏感配置；模板见 `config.example.json`
+- **可选加密**：`config.json` 中 `encrypt_knowledge=true` 加密知识库内容、`encrypt_snapshots=true` 加密数据链快照（AES-256-GCM，密钥存凭据管理器，可用环境变量 `FIN_ENC_KEY` 覆盖；`FIN_KB_ENCRYPT=1` / `FIN_SNAP_ENCRYPT=1` 可临时开启）
+- `config.json`：模型名、桌面路径、加密开关、`market_names`（股票名称→代码映射，可扩展/覆盖内置表）；模板见 `config.example.json`
 - `session.json`：会话状态持久化（搜索结果、选中文件、列名），自动维护
 
 ```json
