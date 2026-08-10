@@ -7,6 +7,7 @@ import json
 import openai
 import re
 import tempfile
+import threading
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -65,6 +66,9 @@ MAX_TOOL_ROUNDS = 4  # 单次 ask 最多执行的工具调用轮数（防止无�
 
 mcp = FastMCP("FinTerminal")
 
+# Session 读写锁：防止并发对话时 session.json 读写竞争
+_SESSION_LOCK = threading.Lock()
+
 
 def _chain_record(file_path):
     """数据链钩子：检测文件变化并写入历史记录。
@@ -80,20 +84,22 @@ def _chain_record(file_path):
 # ==================== Session 文件持久化 ====================
 
 def load_session():
-    if os.path.exists(SESSION_FILE):
-        with open(SESSION_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {
-        "last_search_results": [],
-        "selected_file": None,
-        "selected_chart_type": None,
-        "selected_columns": None,
-        "selected_numeric_columns": None,
-    }
+    with _SESSION_LOCK:
+        if os.path.exists(SESSION_FILE):
+            with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {
+            "last_search_results": [],
+            "selected_file": None,
+            "selected_chart_type": None,
+            "selected_columns": None,
+            "selected_numeric_columns": None,
+        }
 
 def save_session(data):
-    with open(SESSION_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with _SESSION_LOCK:
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 # ==================== Phase 1: 文件读取 ====================
