@@ -1,17 +1,28 @@
 import { useState } from 'react'
+import {
+  BarChart3,
+  BrainCircuit,
+  FileText,
+  FolderOpen,
+  Link2,
+  MessageSquare,
+  Network,
+  Settings,
+  Upload,
+} from 'lucide-react'
 
 import Logo from './Logo'
 import { cn } from '@/lib/utils'
 
 export type ViewKey = 'chat' | 'files' | 'charts' | 'chain' | 'knowledge' | 'settings' | 'export'
 
-const ITEMS: { key: ViewKey; label: string; icon: string }[] = [
-  { key: 'files', label: '文件', icon: '📂' },
-  { key: 'charts', label: '图表', icon: '📊' },
-  { key: 'chain', label: '数据链', icon: '⛓️' },
-  { key: 'knowledge', label: '知识库', icon: '🧠' },
-  { key: 'settings', label: '设置', icon: '⚙️' },
-  { key: 'export', label: '导出', icon: '📤' },
+const ITEMS: { key: ViewKey; label: string; icon: React.ReactNode }[] = [
+  { key: 'files', label: '文件', icon: <FolderOpen className="h-[18px] w-[18px]" /> },
+  { key: 'charts', label: '图表', icon: <BarChart3 className="h-[18px] w-[18px]" /> },
+  { key: 'chain', label: '数据链', icon: <Link2 className="h-[18px] w-[18px]" /> },
+  { key: 'knowledge', label: '知识库', icon: <BrainCircuit className="h-[18px] w-[18px]" /> },
+  { key: 'settings', label: '设置', icon: <Settings className="h-[18px] w-[18px]" /> },
+  { key: 'export', label: '导出', icon: <Upload className="h-[18px] w-[18px]" /> },
 ]
 
 export default function SideNav({ active, onSelect }: { active: ViewKey; onSelect: (k: ViewKey) => void }) {
@@ -39,7 +50,7 @@ export default function SideNav({ active, onSelect }: { active: ViewKey; onSelec
           onClick={() => onSelect('chat')}
           title="对话"
         >
-          <span className="text-lg leading-none">≡</span>
+          <span className="flex h-6 w-6 items-center justify-center text-lg leading-none text-[var(--muted)]">≡</span>
           {open && (
             <span className="flex items-center gap-2 text-sm font-semibold">
               <Logo size={22} />
@@ -58,7 +69,9 @@ export default function SideNav({ active, onSelect }: { active: ViewKey; onSelec
           onClick={() => onSelect('chat')}
           title="对话"
         >
-          <span className="w-6 text-center text-base">💬</span>
+          <span className="flex w-6 items-center justify-center text-[var(--muted)]">
+            <MessageSquare className="h-[18px] w-[18px]" />
+          </span>
           {open && <span className="whitespace-nowrap">对话</span>}
         </button>
         {ITEMS.map((item) => (
@@ -73,7 +86,7 @@ export default function SideNav({ active, onSelect }: { active: ViewKey; onSelec
             onClick={() => onSelect(item.key)}
             title={item.label}
           >
-            <span className="w-6 text-center text-base">{item.icon}</span>
+            <span className="flex w-6 items-center justify-center">{item.icon}</span>
             {open && <span className="whitespace-nowrap">{item.label}</span>}
           </button>
         ))}

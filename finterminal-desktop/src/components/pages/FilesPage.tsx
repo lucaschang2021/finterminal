@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { File, Folder } from 'lucide-react'
 
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
@@ -71,7 +72,9 @@ export default function FilesPage() {
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/5"
                     onClick={() => isDir(ln) ? load(`${path}/${name(ln)}`) : setDetectTarget(`${path}/${name(ln)}`)}
                   >
-                    <span>{isDir(ln) ? '📂' : '📄'}</span>
+                    <span className="flex items-center justify-center text-[var(--muted)]">
+                      {isDir(ln) ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
+                    </span>
                     <span className="min-w-0 flex-1 truncate">{name(ln)}</span>
                     {!isDir(ln) && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>点击体检</span>}
                   </button>

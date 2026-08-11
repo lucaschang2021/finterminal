@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { BookOpen, Link2, TrendingUp } from 'lucide-react'
 
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
@@ -7,14 +8,14 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 
 function Panel({ title, icon, loading, children }: {
   title: string
-  icon: string
+  icon: React.ReactNode
   loading?: boolean
   children: React.ReactNode
 }) {
   return (
     <div className="liquid-glass rounded-xl p-3" style={{ borderRadius: 14 }}>
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium">
-        <span>{icon}</span>
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+          <span className="flex items-center justify-center text-[var(--accent)]">{icon}</span>
         <span>{title}</span>
         {loading && <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />}
       </div>
@@ -67,7 +68,7 @@ export default function RightBoard() {
       <div className="flow-current gold" style={{ '--flow-strength': '6%' } as React.CSSProperties} />
       <ScrollArea className="relative h-full">
         <div className="space-y-3">
-          <Panel title="实时行情" icon="📈" loading={loading}>
+          <Panel title="实时行情" icon={<TrendingUp className="h-3.5 w-3.5" />} loading={loading}>
             <div className="flex gap-2">
               <Input value={code} onChange={(e) => setCode(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && loadQuote()}
@@ -77,11 +78,11 @@ export default function RightBoard() {
             {quote && <pre className="mono mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{quote}</pre>}
           </Panel>
 
-          <Panel title="数据链状态" icon="⛓️">
+          <Panel title="数据链状态" icon={<Link2 className="h-3.5 w-3.5" />}>
             {chain && <pre className="mono mt-1 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{chain}</pre>}
           </Panel>
 
-          <Panel title="知识库状态" icon="🧠">
+          <Panel title="知识库状态" icon={<BookOpen className="h-3.5 w-3.5" />}>
             {kb && <pre className="mono mt-1 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{kb}</pre>}
           </Panel>
         </div>
