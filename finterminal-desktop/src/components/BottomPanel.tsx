@@ -16,13 +16,13 @@ interface BottomPanelProps {
 export default function BottomPanel({ open, onOpenChange, chartType }: BottomPanelProps) {
   return (
     <div
-      className="relative shrink-0 overflow-hidden border-t transition-all duration-500"
+      className="glass-highlight relative shrink-0 overflow-hidden border-t transition-all duration-500"
       style={{
         height: open ? 340 : 22,
         borderColor: 'rgba(255,255,255,0.05)',
-        background: open ? 'rgba(22,27,34,0.60)' : 'transparent',
-        backdropFilter: open ? 'blur(28px) saturate(1.4)' : 'none',
-        WebkitBackdropFilter: open ? 'blur(28px) saturate(1.4)' : 'none',
+        background: open ? 'rgba(22,27,34,0.42)' : 'transparent',
+        backdropFilter: open ? 'blur(28px) saturate(1.6)' : 'none',
+        WebkitBackdropFilter: open ? 'blur(28px) saturate(1.6)' : 'none',
       }}
     >
       <div className="flow-current blue-gold" style={{ '--flow-strength': '8%', '--flow-speed': '16s' } as React.CSSProperties} />
@@ -120,7 +120,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
       <div className="min-w-0 flex-1">
         {option ? <EChart option={option} height="100%" /> : (
           <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>
-            配置参数后渲染（K线/技术面可留空路径走行情源）
+            选择图表或分析数据以查看详情
           </div>
         )}
       </div>
@@ -147,7 +147,11 @@ function ReportTab() {
         <Button size="sm" onClick={run} disabled={busy}>{busy ? '生成中…' : '生成研报'}</Button>
       </div>
       <ScrollArea className="min-w-0 flex-1">
-        {result && <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>}
+        {result ? (
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>输入主题生成研报，例如：写一份贵州茅台的研究报告</div>
+        )}
       </ScrollArea>
     </div>
   )
@@ -171,7 +175,11 @@ function ChainTab() {
         </div>
       </div>
       <ScrollArea className="min-w-0 flex-1">
-        {result && <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>}
+        {result ? (
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>选择操作查看数据链状态：快照 / 校验 / 历史</div>
+        )}
       </ScrollArea>
     </div>
   )
@@ -210,7 +218,11 @@ function StatsTab() {
         <Button size="sm" onClick={run}>分析</Button>
       </div>
       <ScrollArea className="min-w-0 flex-1">
-        {result && <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>}
+        {result ? (
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>选择分析类型并填写数据文件，运行统计分析</div>
+        )}
       </ScrollArea>
     </div>
   )

@@ -53,7 +53,10 @@ export default function ChatView() {
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-3xl px-5 py-5">
+        <div className="relative h-full">
+          {/* 对话区暗调五彩流光 */}
+          <div className="flow-current flow-subtle pointer-events-none absolute inset-0" />
+          <div className="mx-auto max-w-3xl px-5 py-5">
           {messages.length === 0 && (
             <div className="liquid-glass mb-8 rounded-2xl p-5" style={{ borderRadius: 18 }}>
               <div className="mb-3 text-sm font-medium">试试这样问：</div>
@@ -94,7 +97,8 @@ export default function ChatView() {
               </div>
             </div>
           ))}
-          <div ref={bottomRef} />
+            <div ref={bottomRef} />
+          </div>
         </div>
       </ScrollArea>
 

@@ -80,6 +80,22 @@ code, pre, .mono {
   -webkit-backdrop-filter: blur(28px) saturate(1.4);
 }
 
+/* 液态玻璃高光层（避免纯黑观感） */
+.glass-highlight {
+  position: relative;
+  overflow: hidden;
+}
+.glass-highlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 30%),
+    radial-gradient(ellipse 90% 45% at 50% -8%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(ellipse 60% 30% at 95% 105%, rgba(91, 155, 255, 0.05), transparent 60%);
+}
+
 .glass-bubble-user {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   backdrop-filter: blur(12px) saturate(1.3);
@@ -139,8 +155,9 @@ code, pre, .mono {
   inset: 0;
   pointer-events: none;
   opacity: 0.2;
+  filter: saturate(1.7);
   background:
-    linear-gradient(90deg, transparent, var(--accent), var(--accent2), #3FB950, #E68A4A, #8957E5, transparent);
+    linear-gradient(90deg, transparent, var(--accent), #C9A84C, #3FB950, #E68A4A, #8957E5, var(--accent2), var(--accent), transparent);
   background-size: 300% 100%;
   animation: composer-flow-anim 8s linear infinite;
 }
@@ -148,6 +165,11 @@ code, pre, .mono {
 .composer-wrap:focus-within .composer-flow {
   animation-duration: 5s;
   opacity: 0.25;
+}
+
+/* 对话区暗调五彩流光（5-8%） */
+.flow-subtle {
+  opacity: 0.07;
 }
 
 @keyframes composer-flow-anim {
