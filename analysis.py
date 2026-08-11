@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 统计分析模块（FinTerminal）
 ==========================
@@ -298,8 +297,8 @@ def vif(df, x_columns):
         raise ValueError("有效样本不足")
     try:
         inv_corr = np.linalg.inv(data.corr().to_numpy())
-    except Exception:
-        raise ValueError("相关矩阵不可逆（存在完全共线性），无法计算 VIF")
+    except Exception as e:
+        raise ValueError("相关矩阵不可逆（存在完全共线性），无法计算 VIF") from e
     rows = []
     for i, c in enumerate(xs):
         v = float(inv_corr[i][i])

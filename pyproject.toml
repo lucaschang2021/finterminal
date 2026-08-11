@@ -1,0 +1,25 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 140
+exclude = ["__pycache__", "tests", "plugins"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "PIE", "RUF", "SIM"]
+ignore = [
+  "BLE001",   # 工具类代码刻意捕获宽泛异常：保证 MCP 工具绝不裸崩
+  "S110",     # try-except-pass：最佳努力逻辑（缓存/凭据等）
+  "S112",     # try-except-continue：候选回退逻辑
+  "DTZ005",   # 本地单机工具统一使用本地时间
+  "RUF013",   # 允许隐式 Optional 类型提示
+  "RUF001",   # 中文全角标点是本项目的有意风格，非歧义字符
+  "RUF002",
+  "RUF003",
+  "E501",     # 工具 schema 等长行属于有意格式
+  "E702",     # charts 内紧凑单行语句为统一风格
+  "S310",     # urlopen 仅访问硬编码的 https 行情接口
+  "S324",     # md5 仅用于缓存文件名（非安全场景）
+  "SIM103",   # 风格：保留显式 if/return 可读性
+  "SIM105",   # 风格：保留 try/except 语义
+  "B905",     # zip 场景均已知等长
+  "RUF005",   # 风格：保留列表拼接可读性
+]

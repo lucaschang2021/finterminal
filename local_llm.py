@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """本地小模型推理（可选）。
 
 启用方式：config.json 设置 local_model（如 "Qwen/Qwen2.5-0.5B-Instruct"），

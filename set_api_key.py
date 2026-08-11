@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """把 DeepSeek API Key 存入 Windows 凭据管理器（keyring）。
 
 用法：

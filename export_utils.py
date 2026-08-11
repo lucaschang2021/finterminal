@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Markdown 报告导出工具：Word（.docx）与 PDF（reportlab）。
 
 支持 Markdown 子集：标题（#~######）、段落、粗体（**x**）、
@@ -35,9 +34,9 @@ def _parse_blocks(md_text):
             blocks.append(("table", headers, rows))
             i = j
             continue
-        if line.startswith("- ") or line.startswith("* "):
+        if line.startswith(("- ", "* ")):
             items = []
-            while i < n and (lines[i].lstrip().startswith("- ") or lines[i].lstrip().startswith("* ")):
+            while i < n and lines[i].lstrip().startswith(("- ", "* ")):
                 items.append(re.sub(r"^\s*[-*]\s+", "", lines[i]).strip())
                 i += 1
             blocks.append(("list", items))
@@ -90,8 +89,7 @@ def to_pdf(md_text, path):
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
-                                    TableStyle)
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
     styles = getSampleStyleSheet()
     for sname in ("Normal", "Title", "Heading1", "Heading2", "Heading3", "Heading4"):

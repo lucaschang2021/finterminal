@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 实时行情数据源模块（FinTerminal）
 ==================================
@@ -401,8 +400,8 @@ def forecast_model(series, horizon=10, model="auto"):
         return fdf, {"模型": "linear"}
 
     def _ets():
-        from statsmodels.tsa.holtwinters import ExponentialSmoothing
         from statsmodels.tools.sm_exceptions import ConvergenceWarning
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         fit = ExponentialSmoothing(y, trend="add", damped_trend=False).fit()
         fc = fit.forecast(horizon)
@@ -415,8 +414,8 @@ def forecast_model(series, horizon=10, model="auto"):
                 {"模型": "ets", "AIC": round(float(fit.aic), 2) if hasattr(fit, "aic") else None})
 
     def _arima():
-        from statsmodels.tsa.arima.model import ARIMA
         from statsmodels.tools.sm_exceptions import ConvergenceWarning
+        from statsmodels.tsa.arima.model import ARIMA
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         warnings.filterwarnings("ignore", message="Too few observations to estimate")
         warnings.filterwarnings("ignore", message="Non-invertible starting MA")

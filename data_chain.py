@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 数据链模块（FinTerminal）
 ========================
@@ -71,7 +70,8 @@ def _encrypt_enabled():
         return True
     try:
         import json
-        cfg = json.load(open(Path(__file__).parent / "config.json", encoding="utf-8"))
+        with open(Path(__file__).parent / "config.json", encoding="utf-8") as f:
+            cfg = json.load(f)
         return bool(cfg.get("encrypt_snapshots", False))
     except Exception:
         return False
@@ -108,7 +108,7 @@ def _canonical(path: str) -> str:
 def _load_json(path, default):
     if os.path.exists(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return default
@@ -168,7 +168,7 @@ def _record_hash(record) -> str:
 def _detect_encoding(path) -> str:
     for enc in ("utf-8-sig", "utf-8", "gbk", "gb2312", "latin-1"):
         try:
-            with open(path, "r", encoding=enc) as f:
+            with open(path, encoding=enc) as f:
                 f.read()
             return enc
         except UnicodeDecodeError:
@@ -204,7 +204,7 @@ def _read_table(path):
     ext = Path(path).suffix.lower()
     if ext == ".csv":
         enc = _detect_encoding(path)
-        with open(path, "r", encoding=enc) as f:
+        with open(path, encoding=enc) as f:
             first_line = f.readline()
         sep = next((s for s in [",", ";", "\t", "|"] if s in first_line), ",")
         return pd.read_csv(path, encoding=enc, sep=sep, engine="python")
@@ -317,17 +317,17 @@ def _table_diff(old_path, new_path):
 
 def _text_diff(old_path, new_path):
     try:
-        with open(old_path, "r", encoding=_detect_encoding(old_path)) as f:
+        with open(old_path, encoding=_detect_encoding(old_path)) as f:
             old_lines = f.read().splitlines()
-        with open(new_path, "r", encoding=_detect_encoding(new_path)) as f:
+        with open(new_path, encoding=_detect_encoding(new_path)) as f:
             new_lines = f.read().splitlines()
     except Exception:
         return None
 
     diff_lines = list(difflib.unified_diff(old_lines, new_lines, fromfile="before", tofile="after", lineterm=""))
     total = len(diff_lines)
-    added = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
-    removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+    added = sum(1 for ln in diff_lines if ln.startswith("+") and not ln.startswith("+++"))
+    removed = sum(1 for ln in diff_lines if ln.startswith("-") and not ln.startswith("---"))
     preview = "\n".join(diff_lines[:DIFF_LINE_LIMIT])
     return {
         "summary": f"共 {total} 行差异（新增 {added}、删除 {removed}）",
@@ -609,8 +609,8 @@ def _format_record(rec):
         lines.append(f"  ✏️ 第{row['row']}行修改 ({row.get('cell_count')} 个单元格): {cell_text}")
     if diff.get("diff"):
         lines.append("  差异内容:")
-        for l in diff["diff"].splitlines()[:40]:
-            lines.append(f"    {l}")
+        for ln in diff["diff"].splitlines()[:40]:
+            lines.append(f"    {ln}")
 
     before_hash = rec.get("file_hash_before") or "—"
     after_hash = rec.get("file_hash_after") or "—"
@@ -889,7 +889,7 @@ def status():
     size_kb = (_dir_size(SNAPSHOT_DIR) + _dir_size(ARCHIVE_DIR)) / 1024
 
     lines = [
-        f"📊 数据链状态",
+        "📊 数据链状态",
         f"记录总数: {len(records)}",
         f"链头哈希: {ledger.get('head_hash', '—')[:24]}…",
         f"跟踪路径: {len(tracked)} 个",

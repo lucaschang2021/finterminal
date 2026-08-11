@@ -125,6 +125,7 @@ data_chain/
 
 - 单元测试：`python -m pytest tests/ -q`（48 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测）
 - 依赖安全扫描：`python -m pip_audit`
+- 静态质量检查：`python -m ruff check .`（规则配置见 `pyproject.toml`，中文全角标点/紧凑风格已豁免）
 
 ### 启动性能
 

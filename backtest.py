@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """简单回测框架（FinTerminal）。
 
 策略信号：signal_column 中 >0 表示持有多头，否则空仓（次日生效）。

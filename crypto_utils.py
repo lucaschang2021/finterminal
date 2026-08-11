@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """敏感数据加密工具（AES-256-GCM）。
 
 密钥来源优先级：环境变量 FIN_ENC_KEY > Windows 凭据管理器（keyring）> 自动生成并保存。

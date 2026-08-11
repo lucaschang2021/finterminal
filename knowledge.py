@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 RAG 知识库模块（FinTerminal）
 ==============================
@@ -34,7 +33,8 @@ def _encrypt_enabled():
         return True
     try:
         import json
-        cfg = json.load(open(Path(__file__).parent / "config.json", encoding="utf-8"))
+        with open(Path(__file__).parent / "config.json", encoding="utf-8") as f:
+            cfg = json.load(f)
         return bool(cfg.get("encrypt_knowledge", False))
     except Exception:
         return False
@@ -97,7 +97,7 @@ def _get_bm25():
         col = _get_collection()
         data = col.get(include=["documents"])
         ids, docs = (data.get("ids") or []), []
-        for i, d in enumerate(data.get("documents") or []):
+        for d in data.get("documents") or []:
             plain = d
             if isinstance(d, str) and d.startswith("enc:v1:"):
                 try:
@@ -130,7 +130,7 @@ def _extract_text(path):
     if ext in (".csv", ".txt", ".md", ".json", ".py", ".log", ".yaml", ".yml", ".toml", ".xml"):
         for enc in ("utf-8", "utf-8-sig", "gbk", "gb2312", "latin-1"):
             try:
-                with open(path, "r", encoding=enc) as f:
+                with open(path, encoding=enc) as f:
                     return f.read()
             except UnicodeDecodeError:
                 continue

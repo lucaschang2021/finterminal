@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 图表模块（FinTerminal）
 ======================
@@ -13,8 +12,9 @@ funnel / step / polar / errorbar / treemap / scatter3d / surface
 中文标题由项目统一的字体配置保证。
 """
 
-import numpy as np
 import os
+
+import numpy as np
 
 
 class _LazyPandas:
@@ -190,8 +190,8 @@ def _donut(fig, df, p):
         top = data.head(9)
         other = pd.DataFrame({"label": ["其他"], "val": [data["val"].iloc[9:].sum()]})
         data = pd.concat([top, other], ignore_index=True)
-    wedges, _ = ax.pie(data["val"], labels=data["label"], startangle=90,
-                       counterclock=False, textprops={"fontsize": 9}, wedgeprops={"width": 0.35})
+    ax.pie(data["val"], labels=data["label"], startangle=90,
+           counterclock=False, textprops={"fontsize": 9}, wedgeprops={"width": 0.35})
     ax.axis("equal")
     _title(ax, p, "环形图")
 

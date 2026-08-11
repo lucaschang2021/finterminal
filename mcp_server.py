@@ -1,20 +1,22 @@
-from fastmcp import FastMCP
-import os
 import datetime
 import json
+import os
 import re
 import tempfile
 import threading
 from pathlib import Path
 
+from fastmcp import FastMCP
+
+import analysis
+import charts
+
 # ==================== Phase 4: 数据链（文件变更历史） ====================
 import data_chain
-import charts
-import analysis
-import market_data
-import vision_ocr
 import knowledge
+import market_data
 import plugin_manager
+import vision_ocr
 
 
 class _LazyPandas:
@@ -70,7 +72,7 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = BASE_DIR / "config.json"
 SESSION_FILE = str(BASE_DIR / "session.json")
 
-with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+with open(CONFIG_FILE, encoding="utf-8") as f:
     config = json.load(f)
 
 # ==================== API Key 安全加载 ====================
@@ -131,7 +133,7 @@ def load_session():
     with _SESSION_LOCK:
         try:
             if os.path.exists(SESSION_FILE):
-                with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                with open(SESSION_FILE, encoding="utf-8") as f:
                     return json.load(f)
         except Exception:
             pass  # session 文件损坏时回退默认值，不崩溃
@@ -146,9 +148,8 @@ def load_session():
         }
 
 def save_session(data):
-    with _SESSION_LOCK:
-        with open(SESSION_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+    with _SESSION_LOCK, open(SESSION_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 # ==================== Phase 1: 文件读取 ====================
@@ -174,7 +175,7 @@ def read_file(path: str):
     try:
         # 与 read_csv 一致：自动检测编码，GBK 等文本也能正常读取
         enc = _detect_csv_encoding(path)
-        with open(path, 'r', encoding=enc) as f:
+        with open(path, encoding=enc) as f:
             content = f.read()
         # 二进制检测：空字节或大量控制字符视为二进制文件
         ctrl = sum(1 for ch in content if ord(ch) < 9 or 13 < ord(ch) < 32)
@@ -198,26 +199,26 @@ def read_csv(file_path: str):
     detected_encoding = None
     for enc in encodings:
         try:
-            with open(file_path, 'r', encoding=enc) as f:
+            with open(file_path, encoding=enc) as f:
                 f.read()
             detected_encoding = enc
             break
         except UnicodeDecodeError:
             continue
     if detected_encoding is None:
-        return f"❌ 无法检测文件编码"
+        return "❌ 无法检测文件编码"
 
     separators = [',', ';', '\t', '|']
     detected_separator = None
     try:
-        with open(file_path, 'r', encoding=detected_encoding) as f:
+        with open(file_path, encoding=detected_encoding) as f:
             first_line = f.readline()
             for sep in separators:
                 if sep in first_line:
                     detected_separator = sep
                     break
         if detected_separator is None:
-            return f"❌ 无法检测分隔符"
+            return "❌ 无法检测分隔符"
     except Exception as e:
         return f"❌ 读取失败: {e}"
 
@@ -612,7 +613,7 @@ def clean_data(file_path: str, save: bool = False, password: str = None):
     try:
         if ext in (".csv", ".txt"):
             enc = _detect_csv_encoding(file_path)
-            with open(file_path, "r", encoding=enc) as f:
+            with open(file_path, encoding=enc) as f:
                 first_line = f.readline()
             sep = next((s for s in [",", ";", "\t", "|"] if s in first_line), ",")
             # dtype=str 保留前导零等原始文本形态
@@ -967,7 +968,7 @@ def generate_report(
                 sections.append(f"（跳过: {e}）")
 
         if x_columns and y_column:
-            sections.append(f"\n## 五、回归分析\n")
+            sections.append("\n## 五、回归分析\n")
             try:
                 coef_df, summary = analysis.regression(df, x_columns, y_column)
                 sections.append("模型: " + " | ".join(f"{k}: {v}" for k, v in summary.items() if v is not None) + "\n")
@@ -1033,7 +1034,7 @@ def _detect_csv_encoding(file_path: str):
     encodings = ['utf-8-sig', 'utf-8', 'gbk', 'gb2312', 'latin-1']
     for enc in encodings:
         try:
-            with open(file_path, 'r', encoding=enc) as f:
+            with open(file_path, encoding=enc) as f:
                 f.read()
             return enc
         except (UnicodeDecodeError, OSError):
@@ -1045,7 +1046,7 @@ def _load_data(file_path: str):
     ext = Path(file_path).suffix.lower()
     if ext == '.csv':
         enc = _detect_csv_encoding(file_path)
-        with open(file_path, 'r', encoding=enc) as f:
+        with open(file_path, encoding=enc) as f:
             first_line = f.readline()
         sep = next((s for s in [',', ';', '\t', '|'] if s in first_line), ',')
         return pd.read_csv(file_path, encoding=enc, sep=sep, engine='python')
@@ -1067,7 +1068,7 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
         if source == "api":
             # 实时行情来源：直接拉取日K线（如 K线图/收盘价走势）
             if chart_type not in ("candlestick", "line", "technical", "area", "step"):
-                return f"❌ 行情来源（source='api'）仅支持走势类图表：candlestick / line / technical / area / step"
+                return "❌ 行情来源（source='api'）仅支持走势类图表：candlestick / line / technical / area / step"
             df = market_data.kline(file_path, days, period)
             if chart_type == "technical":
                 df = market_data.indicators(df)
@@ -1086,7 +1087,7 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
                 plt.close(fig)
             except Exception:
                 pass
-        return f"❌ 画图失败: {str(e)}"
+        return f"❌ 画图失败: {e!s}"
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -1152,7 +1153,7 @@ def search_file(keyword: str, directory: str = None, recursive: bool = False):
     all_files = []
 
     if recursive:
-        for root, dirs, files in os.walk(directory):
+        for root, _dirs, files in os.walk(directory):
             for f in files:
                 full_path = os.path.join(root, f)
                 display = os.path.relpath(full_path, directory)
@@ -1189,7 +1190,7 @@ def search_file(keyword: str, directory: str = None, recursive: bool = False):
             output += f"  {i}. {r['name']}  [{r['path']}]\n"
         return output
 
-    return f"❌ 未找到任何数据文件"
+    return "❌ 未找到任何数据文件"
 
 
 def _detect_columns(file_path: str):
@@ -1537,7 +1538,7 @@ def ask(query: str):
         return "完成"
 
     except Exception as e:
-        return f"❌ 调用失败: {str(e)}"
+        return f"❌ 调用失败: {e!s}"
 
 
 # ==================== Phase 7: 实时数据源 / 多模态 / RAG 知识库 ====================
@@ -1823,7 +1824,7 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
                     f"MACD={last['MACD']:.3f} RSI={last['RSI']:.1f} "
                     f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
 
-        trend_df, period = analysis.trend(ind, date_column="日期", value_columns="收盘")
+        trend_df, _period = analysis.trend(ind, date_column="日期", value_columns="收盘")
         fdf, finfo = market_data.forecast_model(kdf["收盘"], 10, "auto")
         docs = knowledge.query(topic, top_k)
 
@@ -1933,7 +1934,8 @@ _MARKET_NAMES = {
 def _get_market_names():
     """合并内置股票名称表 + config.json 的 market_names 扩展（可覆盖默认）。"""
     try:
-        cfg = json.load(open(CONFIG_FILE, encoding="utf-8"))
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            cfg = json.load(f)
         extra = cfg.get("market_names") or {}
         names = dict(_MARKET_NAMES)
         names.update(extra)
@@ -2037,7 +2039,7 @@ def _context_ops(session):
     if session.get("last_search_results"):
         lines.append(f"  - 搜索结果有 {len(session['last_search_results'])} 个文件，回复序号即可选择（如“第1个”）")
     if session.get("selected_file"):
-        lines.append(f"  - 已选中文件，可回复“读取”或“画XX图”")
+        lines.append("  - 已选中文件，可回复“读取”或“画XX图”")
     lines.append("  - 通用指令：读取/搜索文件、画图、统计分析、清洗、查行情、查知识库、生成报告")
     return "\n".join(lines)
 

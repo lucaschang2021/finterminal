@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """轻量插件系统（FinTerminal）。
 
 plugins/ 目录下每个 .py 模块若定义 register_plugin(ctx) 则被自动加载。
