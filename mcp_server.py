@@ -20,6 +20,12 @@ import analysis
 import market_data
 import vision_ocr
 import knowledge
+import plugin_manager
+
+# 加载插件并合并插件图表（不影响对外工具数量）
+_PLUGIN_COUNT = plugin_manager.load_plugins()
+for _cname, (_csrc, _cfn) in plugin_manager.get_charts().items():
+    charts.HANDLERS[_cname] = _cfn
 
 # ==================== 读取配置 ====================
 BASE_DIR = Path(__file__).resolve().parent
@@ -1554,6 +1560,22 @@ def _market_cross_check(symbol):
         return f"❌ 交叉验证失败: {e}"
 
 
+def _market_forecast(symbol, days=120, horizon=10, model="auto"):
+    """时序预测：read(source="api", forecast=True)。"""
+    try:
+        _df, fdf, info = market_data.forecast(symbol, days, horizon, model)
+        lines = [f"🔮 价格预测（模型: {info.get('模型', model)}）",
+                 f"基于最近 {days} 个交易日K线"]
+        if info.get("AIC") is not None:
+            lines.append(f"AIC: {info['AIC']}")
+        if info.get("回退原因"):
+            lines.append(f"（自动回退 linear: {info['回退原因']}）")
+        lines += ["", analysis.md_table(fdf)]
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ 预测失败: {e}"
+
+
 def _vision_parse(file_path):
     """图片视觉解析：OCR 文字 + 疑似表格数据。"""
     try:
@@ -1766,12 +1788,12 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
                     f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
 
         trend_df, period = analysis.trend(ind, date_column="日期", value_columns="收盘")
-        fdf = market_data.forecast_from_df(kdf, 10)
+        fdf, finfo = market_data.forecast_model(kdf["收盘"], 10, "auto")
         docs = knowledge.query(topic, top_k)
 
         ai_input = [f"行情: {quote_txt}", f"技术面: {tech_txt}",
                     "趋势: " + trend_df.to_string(index=False),
-                    "预测: " + fdf.to_string(index=False)]
+                    f"预测({finfo.get('模型')}): " + fdf.to_string(index=False)]
         if docs:
             for d in docs[:3]:
                 ai_input.append(f"研报({d['来源']}): {d['内容'][:200]}")
@@ -1799,7 +1821,7 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
             "**趋势统计**（近120个交易日）:",
             trend_df.to_string(index=False),
             "",
-            "**未来10日线性预测**（仅供研究参考）:",
+            f"**未来10日预测（模型: {finfo.get('模型')}，仅供研究参考）**:",
             fdf.to_string(index=False),
             "",
             "**知识库研报观点**:",
@@ -1991,10 +2013,14 @@ def _context_ops(session):
 @mcp.tool
 def read(file_path: str = None, source: str = "local", sheet_name: str = None,
          max_pages: int = 3, ocr: bool = True, password: str = None,
-         kline: bool = False, days: int = 60, period: str = "daily", cross_check: bool = False):
+         kline: bool = False, days: int = 60, period: str = "daily", cross_check: bool = False,
+         forecast: bool = False, horizon: int = 10, model: str = "auto"):
     """读取数据。source="local" 读本地文件（含图片视觉解析）；source="api" 查行情（file_path 填股票代码）；
-    kline=True 返回历史K线（days 天数，period 可 daily/weekly/monthly）；cross_check=True 做腾讯/AkShare 交叉验证。"""
+    kline=True 返回历史K线（days 天数，period 可 daily/weekly/monthly）；cross_check=True 多源交叉验证；
+    forecast=True 返回时序预测（model: linear/arima/ets/auto）。"""
     if source == "api":
+        if forecast:
+            return _market_forecast(file_path, days, horizon, model)
         if cross_check:
             return _market_cross_check(file_path)
         if kline:
@@ -2057,6 +2083,9 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
                                           x_columns=x_columns, y_column=y_column, date_column=date_column,
                                           ai_comment=ai_comment, save=save, format=format, password=password),
     }
+    # 合并插件自定义分析类型
+    for pname, (_psrc, pfn) in plugin_manager.get_analyses().items():
+        dispatch[pname] = (lambda fn=pfn: fn(file_path, password))
     fn = dispatch.get(analysis)
     if not fn:
         return f"❌ 未知分析类型: {analysis}，可用: {', '.join(dispatch)}"

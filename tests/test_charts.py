@@ -16,7 +16,11 @@ def _df():
 
 
 def test_supported_types():
-    assert len(charts.supported_types()) == 27
+    builtin = {"line","bar","barh","stacked_bar","grouped_bar","scatter","bubble","pie",
+               "donut","area","candlestick","box","violin","histogram","heatmap","radar",
+               "waterfall","funnel","step","polar","errorbar","treemap","scatter3d","surface",
+               "technical","wordcloud","sankey"}
+    assert builtin <= set(charts.supported_types())
 
 
 @pytest.mark.parametrize("ctype", ["line", "bar", "pie", "scatter", "area", "step", "polar", "radar", "waterfall", "funnel", "treemap"])

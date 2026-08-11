@@ -19,7 +19,7 @@
 | 数据清洗 | `clean` 自动处理脏数据：空行/空列、重复行、空白、重复列名 |
 | 统计分析 | 描述/相关/分组/回归（含**稳健标准误**）/t检验/ANOVA/**非参数检验**/趋势/**VIF**/**事件研究**/**DID** |
 | 自动报告 | `analyze(analysis="report")` 生成论文风格报告，**支持 md/docx/pdf 导出**，可选 AI 结论建议 |
-| 实时数据源 | 实时行情 + **多周期K线（日/周/月）** + 技术指标（MA/MACD/RSI/布林/KDJ/OBV/ATR）+ 趋势预测；**本地缓存**（行情 30s / K线 1h，断网可用）+ **多源交叉验证**（腾讯 vs AkShare）；腾讯 → AkShare → yfinance 三级回退 |
+| 实时数据源 | 实时行情 + 多周期K线（日/周/月）+ 技术指标（MA/MACD/RSI/布林/KDJ/OBV/ATR）+ **时序预测（ARIMA/ETS/线性，AIC 自动择优）**；本地缓存（行情 30s / K线 1h）+ 多源交叉验证；腾讯 → AkShare → yfinance → **插件** 多级回退 |
 | 多模态视觉 | `read(图片路径)` 自动 OCR 图片文字并还原表格数据 |
 | RAG 知识库 | 本地向量检索 + **BM25 混合检索（RRF 融合）** + **引用溯源**；语义分块、重复添加自动更新、可移除/清空/列清单 |
 | Agentic 研究 | `ask` 说"写一份贵州茅台的研究报告"→ 自动完成行情/指标/趋势/预测/研报/AI结论的完整研究报告 |
@@ -27,15 +27,16 @@
 | 多模态 VLM | 配置 `vision_api_key/vision_model` 后，图片走视觉大模型理解图表数据；未配置自动回退 OCR |
 | 本地小模型 | 配置 `local_model`（如 Qwen2.5-0.5B）后，融合分析可走本地推理；未配置自动回退 DeepSeek |
 | 策略回测 | `analyze(analysis="backtest")`：信号列回测，输出收益率/回撤/夏普/胜率/交易次数 |
+| 插件系统 | `plugins/` 目录自动加载插件：可扩展数据源（quote/kline）、分析类型、图表类型，不影响 8 工具架构 |
 
 ## 工具清单（8 个）
 
 | 工具 | 说明 |
 |---|---|
-| `read(file_path=None, source="local", ..., kline=False, days=60, period="daily", cross_check=False)` | 读取数据：`source="api"` 查行情；`kline=True` 返回日/周/月K线（period）；`cross_check=True` 多源交叉验证 |
+| `read(file_path=None, source="local", ..., kline=False, days=60, period="daily", cross_check=False, forecast=False, horizon=10, model="auto")` | 读取数据：`source="api"` 查行情/K线/交叉验证；`forecast=True` 时序预测（model: linear/arima/ets/auto） |
 | `detect(path)` | 文件体检：格式匹配、加密、损坏、空文件检测 |
 | `clean(file_path, save=False, password=None)` | 清洗杂乱数据：空行/空列、去重、修剪空白、列名规范化 |
-| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 27 种类型（含 technical 技术面、wordcloud 词云、sankey 桑基图）；`source="api"` 时直接画股票K线/走势/技术面 |
+| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 27 种内置类型 + 插件扩展；`source="api"` 时直接画股票K线/走势/技术面 |
 | `analyze(file_path, analysis, ...)` | 统计分析统一入口：describe / correlation / groupby / regression / test / trend / report |
 | `search(keyword=None, directory=None, recursive=False)` | 搜索文件；keyword 留空列出数据文件 |
 | `chain(action, ...)` | 数据链统一入口：status / track / untrack / snapshot / history / show / cleanup / verify |
@@ -118,11 +119,11 @@ data_chain/
 ### 依赖
 
 - Python 3.13+
-- pip 安装：`fastmcp pandas pdfplumber openai matplotlib python-docx openpyxl xlrd pymupdf rapidocr-onnxruntime pypdf msoffcrypto-tool scipy squarify chromadb sentence-transformers yfinance reportlab akshare wordcloud jieba rank_bm25 pytest pip-audit`
+- pip 安装：`fastmcp pandas pdfplumber openai matplotlib python-docx openpyxl xlrd pymupdf rapidocr-onnxruntime pypdf msoffcrypto-tool scipy squarify chromadb sentence-transformers yfinance reportlab akshare wordcloud jieba rank_bm25 statsmodels pytest pip-audit`
 
 ### 测试
 
-- 单元测试：`python -m pytest tests/ -q`（43 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库）
+- 单元测试：`python -m pytest tests/ -q`（48 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测）
 - 依赖安全扫描：`python -m pip_audit`
 
 > `.xls` 需要 `xlrd`，`.xlsx` 需要 `openpyxl`，Word 需要 `python-docx`，扫描件 OCR 需要 `pymupdf` + `rapidocr-onnxruntime`，加密 Office 文件解密需要 `msoffcrypto-tool`。
@@ -170,6 +171,10 @@ finterminal-mcp/
 ├── market_data.py         # 实时行情数据源（腾讯/yfinance）
 ├── vision_ocr.py          # 多模态图片解析（OCR + 表格还原）
 ├── knowledge.py           # RAG 知识库（chromadb + 向量嵌入）
+├── plugin_manager.py      # 插件加载器
+├── plugins/               # 插件目录（example_plugin.py 为示例）
+├── backtest.py            # 策略回测框架
+├── local_llm.py           # 本地小模型推理（可选）
 ├── config.json            # API Key 配置
 ├── session.json           # 会话状态
 ├── cline_mcp_settings.json# Cline 注册配置

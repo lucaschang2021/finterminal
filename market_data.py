@@ -138,6 +138,24 @@ def _ak_kline(symbol, days=120, period="daily"):
     })
 
 
+def _plugin_call(kind, symbol, *args, **kwargs):
+    """调用插件提供的数据源；返回数据或 None。"""
+    try:
+        import plugin_manager
+    except Exception:
+        return None
+    for name, fn in plugin_manager.get_providers(kind):
+        try:
+            result = fn(symbol, *args, **kwargs)
+            if result is not None and result is not False:
+                if isinstance(result, dict):
+                    result.setdefault("来源", f"插件:{name}")
+                return result
+        except Exception:
+            continue
+    return None
+
+
 def quote(symbol, use_cache=True):
     """获取实时行情（带 30 秒本地缓存）。返回字典：名称、现价、涨跌幅、成交量等。"""
     key = f"quote:{symbol}"
@@ -168,16 +186,19 @@ def _quote_fetch(symbol):
         # 回退2：yfinance（美股/港股等）
         try:
             import yfinance as yf
-        except ImportError:
-            raise ValueError(f"腾讯/AkShare 行情均失败: {e} / {e2}（未安装 yfinance）") from e
-        t = yf.Ticker(symbol)
-        info = t.fast_info
-        return {
-            "名称": symbol, "代码": symbol, "现价": getattr(info, "last_price", None),
-            "昨收": getattr(info, "previous_close", None), "今开": getattr(info, "open", None),
-            "涨跌幅%": None, "成交量": getattr(info, "last_volume", None),
-            "来源": "yfinance",
-        }
+            t = yf.Ticker(symbol)
+            info = t.fast_info
+            return {
+                "名称": symbol, "代码": symbol, "现价": getattr(info, "last_price", None),
+                "昨收": getattr(info, "previous_close", None), "今开": getattr(info, "open", None),
+                "涨跌幅%": None, "成交量": getattr(info, "last_volume", None),
+                "来源": "yfinance",
+            }
+        except Exception as e3:
+            pdata = _plugin_call("quote", symbol)
+            if pdata is not None:
+                return pdata
+            raise ValueError(f"腾讯/AkShare/yfinance 行情均失败: {e} / {e2} / {e3}") from e3
 
 
 _PERIOD_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
@@ -241,9 +262,10 @@ def _kline_fetch(symbol, days=60, period="daily"):
                 "最高": h["High"].to_numpy(), "最低": h["Low"].to_numpy(),
                 "成交量": h["Volume"].to_numpy(),
             })
-        except ImportError:
-            raise ValueError(f"腾讯/AkShare K线均失败: {e} / {e2}（未安装 yfinance）") from e
         except Exception as e3:
+            pdata = _plugin_call("kline", symbol, days, period)
+            if pdata is not None:
+                return pdata
             raise ValueError(f"腾讯/AkShare/yfinance K线均失败（{symbol}）: {e} / {e2} / {e3}") from e3
 
 
@@ -325,11 +347,79 @@ def indicators(df):
     return df
 
 
-def forecast(symbol, days=120, horizon=10):
-    """基于线性趋势的简单价格预测（含 95% 近似置信区间）。
-    返回 (原始K线+指标 DataFrame, 预测 DataFrame)。"""
+def forecast(symbol, days=120, horizon=10, model="auto"):
+    """价格预测（支持 linear/arima/ets/auto，auto 按 AIC 择优、失败回退 linear）。
+    返回 (原始K线+指标 DataFrame, 预测 DataFrame, 模型信息 dict)。"""
     df = kline(symbol, days)
-    return indicators(df), forecast_from_df(df, horizon)
+    fdf, info = forecast_model(df["收盘"], horizon, model)
+    return indicators(df), fdf, info
+
+
+def forecast_model(series, horizon=10, model="auto"):
+    """多模型时序预测。返回 (预测 DataFrame, 模型信息 dict)。"""
+    import numpy as np
+    import pandas as pd
+    y = pd.to_numeric(pd.Series(series), errors="coerce").dropna().astype(float)
+    if len(y) < 6:
+        fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
+        fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
+        return fdf, {"模型": "linear", "说明": "样本不足，使用线性趋势"}
+
+    def _linear():
+        fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
+        return fdf, {"模型": "linear"}
+
+    def _ets():
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
+        fit = ExponentialSmoothing(y, trend="add", damped_trend=False).fit()
+        fc = fit.forecast(horizon)
+        resid = y - fit.fittedvalues
+        sigma = float(resid.std(ddof=2)) if len(resid) > 2 else 0.0
+        band = 1.96 * sigma
+        return (pd.DataFrame({"预测收盘": np.round(fc.values, 2),
+                              "下界": np.round(fc.values - band, 2),
+                              "上界": np.round(fc.values + band, 2)}),
+                {"模型": "ets", "AIC": round(float(fit.aic), 2) if hasattr(fit, "aic") else None})
+
+    def _arima():
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from statsmodels.tsa.arima.model import ARIMA
+            best = None
+            for p in range(0, 3):
+                for d in range(0, 2):
+                    for q in range(0, 3):
+                        try:
+                            fit = ARIMA(y, order=(p, d, q)).fit()
+                            if best is None or fit.aic < best[0]:
+                                best = (fit.aic, fit)
+                        except Exception:
+                            continue
+        if best is None:
+            raise ValueError("ARIMA 拟合失败")
+        aic, fit = best
+        fc = fit.get_forecast(horizon)
+        ci = fc.conf_int()
+        return (pd.DataFrame({"预测收盘": np.round(fc.predicted_mean.values, 2),
+                              "下界": np.round(ci.iloc[:, 0].values, 2),
+                              "上界": np.round(ci.iloc[:, 1].values, 2)}),
+                {"模型": "arima", "AIC": round(float(aic), 2)})
+
+    models = {"linear": _linear, "ets": _ets, "arima": _arima}
+    candidates = ["arima", "ets", "linear"] if model == "auto" else [model] if model in models else ["linear"]
+    last_err = None
+    for m in candidates:
+        try:
+            fdf, info = models[m]()
+            fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
+            return fdf, info
+        except Exception as e:
+            last_err = e
+            continue
+    fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
+    fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
+    return fdf, {"模型": "linear", "回退原因": str(last_err)}
 
 
 def forecast_from_df(df, horizon=10):
