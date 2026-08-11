@@ -14,8 +14,20 @@ funnel / step / polar / errorbar / treemap / scatter3d / surface
 """
 
 import numpy as np
-import pandas as pd
 import os
+
+
+class _LazyPandas:
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import pandas as _pd
+            self._m = _pd
+        return getattr(self._m, name)
+
+
+pd = _LazyPandas()
 
 
 class _LazyPlt:

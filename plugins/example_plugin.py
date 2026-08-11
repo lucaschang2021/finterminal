@@ -2,8 +2,6 @@
 """示例插件：演示数据源、分析类型与图表类型的扩展方式。
 复制本文件改造即可接入自己的数据源或分析逻辑。"""
 
-import pandas as pd
-
 
 def register_plugin(ctx):
     # 数据源：查询代码为 DEMO 时返回演示行情/K线
@@ -26,6 +24,7 @@ def demo_kline(symbol, days=60, period="daily"):
     if symbol != "DEMO":
         return None
     import numpy as np
+    import pandas as pd
     n = min(days, 30)
     return pd.DataFrame({
         "日期": pd.date_range("2026-01-01", periods=n).strftime("%Y-%m-%d"),

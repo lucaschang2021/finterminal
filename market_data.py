@@ -420,14 +420,17 @@ def forecast_model(series, horizon=10, model="auto"):
     models = {"linear": _linear, "ets": _ets, "arima": _arima}
     candidates = ["arima", "ets", "linear"] if model == "auto" else [model] if model in models else ["linear"]
     last_err = None
+    import warnings
     for m in candidates:
-        try:
-            fdf, info = models[m]()
-            fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
-            return fdf, info
-        except Exception as e:
-            last_err = e
-            continue
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                fdf, info = models[m]()
+                fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
+                return fdf, info
+            except Exception as e:
+                last_err = e
+                continue
     fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
     fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
     return fdf, {"模型": "linear", "回退原因": str(last_err)}

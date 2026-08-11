@@ -1018,9 +1018,6 @@ def generate_report(
 
 # ==================== Phase 2: 可视化 ====================
 
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
-
 CHART_DIR = Path(__file__).parent / "charts"
 CHART_DIR.mkdir(exist_ok=True)
 
