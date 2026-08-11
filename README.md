@@ -77,6 +77,16 @@
 
 `ask` 支持的说法示例：`用第1个`、`查看第1个`、`画贵州茅台的技术面图`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`（重复添加自动更新）、`查一下知识库：茅台的估值`、`列出知识库文档`、`清空知识库`、`写一份贵州茅台的研究报告`（Agentic 自主研究）、`给数据链盖时间戳`（chain anchor）、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
 
+## Web 前端（React + ECharts）
+
+`frontend/` 是基于 React 18 + Vite + ECharts 的交互式前端，通过 HTTP API 桥（`api_server.py`）复用 8 个工具的底层函数。
+
+- 启动后端 API：`python -m uvicorn api_server:app --host 127.0.0.1 --port 8000`
+- 启动前端开发：`cd frontend && npm install && npm run dev` → http://localhost:5173（/api 自动代理到 8000）
+- 生产构建：`cd frontend && npm run build`（输出 `frontend/dist`）
+- 图表渲染：前端调 `/api/plot/data` 获取 ECharts 结构化 option（line/bar/area/stacked/grouped/scatter/bubble/pie/donut/box/histogram），交互式渲染（缩放/悬停/图例切换）；`/api/plot/save` 仍可生成 PNG + 交互 HTML
+- 静态文件：`/api/file` 仅允许访问 `charts/` 目录（防任意文件读取）
+
 ## 数据链说明
 
 ### 工作原理

@@ -14,6 +14,10 @@ reports/
 charts/
 cache/
 
+# 前端
+frontend/node_modules/
+frontend/dist/
+
 # 日志与临时文件
 *.log
 *.tmp

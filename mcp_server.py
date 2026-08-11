@@ -1160,6 +1160,29 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
             os.remove(tmp_path)
 
 
+def _plot_data(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
+    """生成 ECharts 结构化数据（供前端交互渲染），失败时返回 {"error": ...}。"""
+    tmp_path = None
+    try:
+        _chain_record(file_path)
+        import chart_data
+        if source == "api":
+            if chart_type not in ("line", "bar", "area"):
+                return {"error": "行情源的结构化数据暂支持 line / bar / area"}
+            df = market_data.kline(file_path, days, period)
+        else:
+            eff_path, tmp_path = _maybe_decrypt(file_path, password)
+            df = _load_data(eff_path)
+        if df is None or df.empty:
+            return {"error": "数据为空，无法生成图表"}
+        return chart_data.build(chart_type, df, **kwargs)
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 def plot_line(file_path: str, x_column: str, y_column: str, password: str = None):
     """折线图。"""
     return _plot("line", file_path, password=password, x_column=x_column, y_column=y_column)
@@ -1193,6 +1216,7 @@ def plot_chart(
     source: str = "local",
     days: int = 60,
     period: str = "daily",
+    return_data: bool = False,
 ):
     """通用图表工具，支持 24 种图表类型。
 
@@ -1200,6 +1224,12 @@ def plot_chart(
     pie / donut / area / candlestick / box / violin / histogram / heatmap / radar /
     waterfall / funnel / step / polar / errorbar / treemap / scatter3d / surface
     """
+    if return_data:
+        return _plot_data(chart_type, file_path, password=password, source=source, days=days, period=period,
+                          x_column=x_column, y_column=y_column, y_columns=y_columns,
+                          value_column=value_column, open_column=open_column, high_column=high_column,
+                          low_column=low_column, close_column=close_column, size_column=size_column,
+                          error_column=error_column, title=title)
     return _plot(chart_type, file_path, password=password, x_column=x_column, y_column=y_column,
                  y_columns=y_columns, value_column=value_column, open_column=open_column,
                  high_column=high_column, low_column=low_column, close_column=close_column,
