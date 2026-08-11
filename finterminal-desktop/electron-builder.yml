@@ -1,0 +1,40 @@
+appId: com.finterminal.desktop
+productName: FinTerminal
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - electron/**
+  - package.json
+
+extraResources:
+  - from: build/backend/finterminal-backend.exe
+    to: backend/finterminal-backend.exe
+    filter: ["**/*"]
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FinTerminal
+  artifactName: FinTerminal-Setup-${version}.exe
+
+portable:
+  artifactName: FinTerminal-${version}.exe
+
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/

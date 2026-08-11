@@ -1,0 +1,23 @@
+# FinTerminal 后端核心依赖（pyinstaller 打包参考）
+fastapi>=0.115
+uvicorn>=0.32
+pandas>=2.2
+numpy>=1.26
+scipy>=1.13
+statsmodels>=0.14
+matplotlib>=3.9
+openpyxl>=3.1
+pdfplumber>=0.11
+pymupdf>=1.24
+pillow>=10.4
+rapidocr-onnxruntime>=1.4
+python-docx>=1.1
+reportlab>=4.2
+msoffcrypto-tool>=5.4
+cryptography>=43
+keyring>=25
+chromadb>=0.5
+rank-bm25>=0.2
+jieba>=0.42
+plotly>=5.24
+requests>=2.32

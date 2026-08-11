@@ -18,6 +18,17 @@ cache/
 frontend/node_modules/
 frontend/dist/
 
+# Electron 桌面应用
+finterminal-desktop/node_modules/
+finterminal-desktop/dist/
+finterminal-desktop/build/backend/
+finterminal-desktop/build/pyinstaller_work/
+finterminal-desktop/build/*.spec
+finterminal-desktop/release/
+finterminal-desktop/*.tsbuildinfo
+finterminal-desktop/vite.config.js
+finterminal-desktop/vite.config.d.ts
+
 # 日志与临时文件
 *.log
 *.tmp

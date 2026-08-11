@@ -1,7 +1,11 @@
 [tool.ruff]
 target-version = "py313"
 line-length = 140
-exclude = ["__pycache__", "tests", "plugins"]
+exclude = ["__pycache__", "tests", "plugins",
+           "finterminal-desktop/node_modules",
+           "finterminal-desktop/build",
+           "finterminal-desktop/dist",
+           "finterminal-desktop/release"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "S", "PIE", "RUF", "SIM"]
