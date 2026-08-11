@@ -13,15 +13,28 @@ funnel / step / polar / errorbar / treemap / scatter3d / surface
 中文标题由项目统一的字体配置保证。
 """
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
 
-plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
-plt.rcParams["axes.unicode_minus"] = False
+
+class _LazyPlt:
+    """惰性加载 matplotlib.pyplot：首次绘图才导入（含中文字体配置），加快服务启动。"""
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as _plt
+            _plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+            _plt.rcParams["axes.unicode_minus"] = False
+            self._m = _plt
+        return getattr(self._m, name)
+
+
+plt = _LazyPlt()
+
 
 
 # ==================== 工具函数 ====================

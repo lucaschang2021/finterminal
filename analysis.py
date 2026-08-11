@@ -15,8 +15,33 @@
 """
 
 import numpy as np
-import pandas as pd
-from scipy import stats
+
+
+class _LazyPandas:
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import pandas as _pd
+            self._m = _pd
+        return getattr(self._m, name)
+
+
+pd = _LazyPandas()
+
+
+class _LazyStats:
+    """惰性加载 scipy.stats：首次使用才导入，加快服务启动。"""
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            from scipy import stats
+            self._m = stats
+        return getattr(self._m, name)
+
+
+stats = _LazyStats()
 
 
 # ==================== 基础工具 ====================

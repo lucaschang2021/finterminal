@@ -14,9 +14,20 @@ import re
 import time
 from pathlib import Path
 
-import pandas as pd
-
 CACHE_DIR = Path(__file__).parent / "cache" / "market"
+
+
+class _LazyPandas:
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import pandas as _pd
+            self._m = _pd
+        return getattr(self._m, name)
+
+
+pd = _LazyPandas()
 
 
 def _json_default(o):

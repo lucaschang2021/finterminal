@@ -126,6 +126,11 @@ data_chain/
 - 单元测试：`python -m pytest tests/ -q`（48 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测）
 - 依赖安全扫描：`python -m pip_audit`
 
+### 启动性能
+
+- pandas / scipy / matplotlib / openai / pdfplumber 等重型依赖均为**惰性加载**（首次使用时才导入），
+  服务启动约 **4.3 秒**（未优化前 7.9 秒）；首次绘图/统计调用会略慢属正常
+
 > `.xls` 需要 `xlrd`，`.xlsx` 需要 `openpyxl`，Word 需要 `python-docx`，扫描件 OCR 需要 `pymupdf` + `rapidocr-onnxruntime`，加密 Office 文件解密需要 `msoffcrypto-tool`。
 
 ### Cline 注册

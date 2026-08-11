@@ -31,8 +31,6 @@ import threading
 import uuid
 from pathlib import Path
 
-import pandas as pd
-
 CHAIN_DIR = Path(__file__).parent / "data_chain"
 LEDGER_FILE = CHAIN_DIR / "ledger.json"
 TRACK_FILE = CHAIN_DIR / "tracked.json"
@@ -52,6 +50,19 @@ TABLE_ROW_LIMIT = 5000     # 超过该行数不做逐行对比，只记录概要
 
 # 数据链写入锁：防止并发调用（多个工具同时触发记录）导致账本损坏或丢记录
 _CHAIN_LOCK = threading.Lock()
+
+
+class _LazyPandas:
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import pandas as _pd
+            self._m = _pd
+        return getattr(self._m, name)
+
+
+pd = _LazyPandas()
 
 
 def _encrypt_enabled():

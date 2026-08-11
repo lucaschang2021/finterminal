@@ -1,16 +1,10 @@
 from fastmcp import FastMCP
 import os
 import datetime
-import pandas as pd
-import pdfplumber
 import json
-import openai
 import re
 import tempfile
 import threading
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 # ==================== Phase 4: 数据链（文件变更历史） ====================
@@ -21,6 +15,50 @@ import market_data
 import vision_ocr
 import knowledge
 import plugin_manager
+
+
+class _LazyPandas:
+    """惰性加载 pandas：首次数据操作才导入，加快服务启动。"""
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import pandas as _pd
+            self._m = _pd
+        return getattr(self._m, name)
+
+
+pd = _LazyPandas()
+
+
+class _LazyOpenAI:
+    """惰性加载 openai SDK：首次调用 AI 才导入，加快服务启动。"""
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import openai as _openai
+            self._m = _openai
+        return getattr(self._m, name)
+
+
+openai = _LazyOpenAI()
+
+
+class _LazyPlt:
+    """惰性加载 matplotlib.pyplot：首次绘图才导入，加快服务启动。"""
+    _m = None
+
+    def __getattr__(self, name):
+        if self._m is None:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as _plt
+            self._m = _plt
+        return getattr(self._m, name)
+
+
+plt = _LazyPlt()
 
 # 加载插件并合并插件图表（不影响对外工具数量）
 _PLUGIN_COUNT = plugin_manager.load_plugins()
@@ -324,6 +362,7 @@ def read_pdf(file_path: str, max_pages: int = 3, ocr: bool = True, password: str
         return f"❌ 文件损坏或不是有效 PDF（文件头检查失败）: {e}"
 
     try:
+        import pdfplumber
         with pdfplumber.open(file_path) as pdf:
             total_pages = len(pdf.pages)
             max_pages = max(1, min(max_pages, total_pages))
