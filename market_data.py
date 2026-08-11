@@ -12,9 +12,17 @@ import hashlib
 import json
 import re
 import time
+import warnings
 from pathlib import Path
 
 CACHE_DIR = Path(__file__).parent / "cache" / "market"
+
+# 静默 statsmodels 在 ARIMA/ETS 拟合中的已知噪音警告（收敛/索引），保持工具输出干净
+warnings.filterwarnings("ignore", message="Maximum Likelihood optimization failed")
+warnings.filterwarnings("ignore", message="Non-invertible starting MA")
+warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive")
+warnings.filterwarnings("ignore", message="No supported index")
+warnings.filterwarnings("ignore", message="Setting the shape on a NumPy array")
 
 
 class _LazyPandas:
@@ -371,6 +379,14 @@ def forecast_model(series, horizon=10, model="auto"):
     import numpy as np
     import pandas as pd
     y = pd.to_numeric(pd.Series(series), errors="coerce").dropna().astype(float)
+    if len(y) < 3:
+        empty = pd.DataFrame({
+            "期数": [f"T+{i}" for i in range(1, horizon + 1)],
+            "预测收盘": [None] * horizon,
+            "下界": [None] * horizon,
+            "上界": [None] * horizon,
+        })
+        return empty, {"模型": "linear", "说明": "有效样本不足 3 期，无法预测"}
     if len(y) < 6:
         fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
         fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
@@ -382,6 +398,8 @@ def forecast_model(series, horizon=10, model="auto"):
 
     def _ets():
         from statsmodels.tsa.holtwinters import ExponentialSmoothing
+        from statsmodels.tools.sm_exceptions import ConvergenceWarning
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
         fit = ExponentialSmoothing(y, trend="add", damped_trend=False).fit()
         fc = fit.forecast(horizon)
         resid = y - fit.fittedvalues
@@ -393,20 +411,23 @@ def forecast_model(series, horizon=10, model="auto"):
                 {"模型": "ets", "AIC": round(float(fit.aic), 2) if hasattr(fit, "aic") else None})
 
     def _arima():
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            from statsmodels.tsa.arima.model import ARIMA
-            best = None
-            for p in range(0, 3):
-                for d in range(0, 2):
-                    for q in range(0, 3):
-                        try:
-                            fit = ARIMA(y, order=(p, d, q)).fit()
-                            if best is None or fit.aic < best[0]:
-                                best = (fit.aic, fit)
-                        except Exception:
-                            continue
+        from statsmodels.tsa.arima.model import ARIMA
+        from statsmodels.tools.sm_exceptions import ConvergenceWarning
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+        warnings.filterwarnings("ignore", message="Too few observations to estimate")
+        warnings.filterwarnings("ignore", message="Non-invertible starting MA")
+        warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive")
+        warnings.filterwarnings("ignore", message="Setting the shape on a NumPy array")
+        best = None
+        for p in range(0, 3):
+            for d in range(0, 2):
+                for q in range(0, 3):
+                    try:
+                        fit = ARIMA(y, order=(p, d, q)).fit()
+                        if best is None or fit.aic < best[0]:
+                            best = (fit.aic, fit)
+                    except Exception:
+                        continue
         if best is None:
             raise ValueError("ARIMA 拟合失败")
         aic, fit = best
@@ -420,17 +441,14 @@ def forecast_model(series, horizon=10, model="auto"):
     models = {"linear": _linear, "ets": _ets, "arima": _arima}
     candidates = ["arima", "ets", "linear"] if model == "auto" else [model] if model in models else ["linear"]
     last_err = None
-    import warnings
     for m in candidates:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            try:
-                fdf, info = models[m]()
-                fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
-                return fdf, info
-            except Exception as e:
-                last_err = e
-                continue
+        try:
+            fdf, info = models[m]()
+            fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
+            return fdf, info
+        except Exception as e:
+            last_err = e
+            continue
     fdf = forecast_from_df(pd.DataFrame({"收盘": y}), horizon)
     fdf.insert(0, "期数", [f"T+{i}" for i in range(1, horizon + 1)])
     return fdf, {"模型": "linear", "回退原因": str(last_err)}

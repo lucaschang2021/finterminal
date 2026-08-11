@@ -2146,6 +2146,8 @@ def search(keyword: str = None, directory: str = None, recursive: bool = False):
 @mcp.tool
 def detect(path: str):
     """文件体检：格式匹配、加密、损坏、空文件检测。"""
+    if not path:
+        return "❌ 请提供 path（要体检的文件路径）"
     return detect_file_type(path)
 
 

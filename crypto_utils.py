@@ -62,6 +62,9 @@ def decrypt_bytes(data: bytes) -> bytes:
     """解密 enc:v1 格式数据；非本格式原样返回。"""
     if not data.startswith(b"enc:v1:"):
         return data
-    raw = base64.b64decode(data[len(b"enc:v1:"):])
-    nonce, ct = raw[:12], raw[12:]
-    return AESGCM(_get_key()).decrypt(nonce, ct, None)
+    try:
+        raw = base64.b64decode(data[len(b"enc:v1:"):])
+        nonce, ct = raw[:12], raw[12:]
+        return AESGCM(_get_key()).decrypt(nonce, ct, None)
+    except Exception as e:
+        raise ValueError(f"解密失败：密文无效或已被篡改（{type(e).__name__}）") from e

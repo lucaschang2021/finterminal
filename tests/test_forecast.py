@@ -33,3 +33,11 @@ def test_forecast_short_series():
 def test_forecast_unknown_model_fallback():
     fdf, info = md.forecast_model(_series(), 10, "nope")
     assert len(fdf) == 10 and info["模型"] == "linear"
+
+
+def test_forecast_empty_and_all_nan():
+    import pandas as pd
+    import numpy as np
+    for series in (pd.Series([], dtype=float), pd.Series([np.nan] * 10)):
+        fdf, info = md.forecast_model(series, 5, "auto")
+        assert len(fdf) == 5 and "样本不足" in info.get("说明", "")

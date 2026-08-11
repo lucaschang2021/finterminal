@@ -22,3 +22,9 @@ def test_plain_passthrough():
 
 def test_different_data_different_cipher():
     assert cu.encrypt_bytes(b"a") != cu.encrypt_bytes(b"a")
+
+
+def test_tampered_ciphertext():
+    import pytest
+    with pytest.raises(ValueError, match="解密失败"):
+        cu.decrypt_bytes(b"enc:v1:AAAA")

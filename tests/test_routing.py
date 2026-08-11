@@ -35,3 +35,8 @@ def test_corrupt_session_fallback(tmp_path, monkeypatch):
     data = m.load_session()
     assert isinstance(data.get("last_search_results"), list)
     assert data.get("pending_market_query") is None
+
+
+def test_detect_none():
+    import mcp_server as m
+    assert "请提供 path" in m.detect(None)
