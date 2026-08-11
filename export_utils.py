@@ -58,7 +58,8 @@ def to_docx(md_text, path):
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Microsoft YaHei"
-    style._element.rPr.rFonts.set(qn("w:eastAsia"), "微软雅黑")
+    rpr = style._element.get_or_add_rPr()
+    rpr.get_or_add_rFonts().set(qn("w:eastAsia"), "微软雅黑")
     for block in _parse_blocks(md_text):
         kind = block[0]
         if kind == "h":
