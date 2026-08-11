@@ -245,7 +245,10 @@ def _read_table(path):
             first_line = f.readline()
         sep = next((s for s in [",", ";", "\t", "|"] if s in first_line), ",")
         return pd.read_csv(path, encoding=enc, sep=sep, engine="python")
-    if ext in (".xlsx", ".xls"):
+    if ext == ".xlsx":
+        import excel_utils
+        return excel_utils.read_xlsx(path)
+    if ext == ".xls":
         return pd.read_excel(path)
     return None
 

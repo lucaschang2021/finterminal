@@ -285,7 +285,9 @@ def read_excel(file_path: str, sheet_name: str = None, password: str = None):
                 # openpyxl 不支持 .xls，.xls 由 pandas 自动选择 xlrd 解析
                 df = pd.read_excel(file_path, sheet_name=sheet_name)
             else:
-                df = pd.read_excel(file_path, sheet_name=sheet_name, engine='openpyxl')
+                # .xlsx 用 openpyxl 保留公式字符串，避免公式单元格被读成 NaN
+                import excel_utils
+                df = excel_utils.read_xlsx(file_path, sheet=sheet_name)
         except ImportError as e:
             return f"❌ 读取 .xls 需要安装 xlrd：pip install xlrd（{e}）"
         except Exception as e:
@@ -628,7 +630,12 @@ def clean_data(file_path: str, save: bool = False, password: str = None):
                 if not password:
                     return "🔒 检测到加密的 Excel 文件，需要密码（调用时传 password 参数）"
                 file_path, tmp_path = _maybe_decrypt(file_path, password)
-            df = pd.read_excel(file_path, dtype=str)
+            if ext == ".xlsx":
+                # 保留公式字符串，避免公式单元格被读成 NaN 后误判为空行
+                import excel_utils
+                df = excel_utils.read_xlsx(file_path)
+            else:
+                df = pd.read_excel(file_path, dtype=str)
             enc, sep = "（Excel 内部）", "—"
         else:
             return f"❌ 暂不支持清洗该格式: {ext}（支持 CSV / TXT / Excel）"
@@ -682,6 +689,38 @@ def clean_data(file_path: str, save: bool = False, password: str = None):
             df[col] = s.str.strip()
     if trimmed:
         report.append(f"修剪空白单元格 {trimmed} 个")
+
+    # 4b) 中和公式注入（CSV Injection, CWE-1236）：
+    #     以 = + @ 开头，或 - 后接非数字（非纯负数）的单元格，
+    #     统一加单引号前缀，防止 Excel/WPS 打开清洗结果时执行恶意公式。
+    def _needs_neutralize(v):
+        if pd.isna(v):
+            return False
+        s = str(v)
+        if not s:
+            return False
+        if s[0] in ("=", "+", "@"):
+            return True
+        if s[0] == "-":
+            # 只有能解析为数值的（-5 / -0.3 / -1e3）才视为纯负数放行，
+            # 否则（-2+3 / -=x）视为公式注入，需要中和。
+            try:
+                float(s)
+                return False
+            except ValueError:
+                return True
+        return False
+
+    def _neutralize(v):
+        if _needs_neutralize(v):
+            return "'" + str(v)
+        return v
+
+    formula_mask = df.map(_needs_neutralize)
+    formula_count = int(formula_mask.sum().sum()) if not df.empty else 0
+    if formula_count:
+        df = df.map(_neutralize)
+        report.append(f"中和公式注入单元格 {formula_count} 个（= + @ 或非纯负数 - 开头，已加 ' 前缀）")
 
     # 5) 去完全重复行
     df = df.drop_duplicates().reset_index(drop=True)
@@ -1056,6 +1095,9 @@ def _load_data(file_path: str):
         return pd.read_csv(file_path, encoding=enc, sep=sep, engine='python')
     elif ext in ['.xlsx', '.xls']:
         try:
+            if ext == '.xlsx':
+                import excel_utils
+                return excel_utils.read_xlsx(file_path)
             return pd.read_excel(file_path)
         except ImportError as e:
             raise ValueError(f"读取 .xls 需要安装 xlrd：pip install xlrd（{e}）") from e
@@ -1355,6 +1397,11 @@ def ask(query: str):
         if intent == "historical":
             return knowledge_fusion(query, symbol=symbol)
         return _ask_market_confirmation(query, symbol, name)
+
+    # ====== 历史财报/研报类查询：时间意图明确为历史，直接走 RAG ======
+    if _is_historical_report_query(query):
+        symbol, _name = _extract_market_symbol(query)
+        return knowledge_fusion(query, symbol=symbol)
 
     # ====== 选择文件 ======
     if session.get("last_search_results") and len(session["last_search_results"]) > 0:
@@ -1981,6 +2028,22 @@ def _is_market_query(query):
     if not symbol:
         return False
     return any(v in query for v in _MARKET_VERBS)
+
+
+def _is_historical_report_query(query):
+    """历史财报/研报类查询：命中股票 + 历史时间意图 + 财报类关键词时，
+    直接走 RAG 知识库，避免被通用 LLM 兜底或误判为实时行情。"""
+    if any(s in query for s in ("读", "打开", "搜索", "路径", "文件", "下载", "保存")):
+        return False
+    symbol, _ = _extract_market_symbol(query)
+    if not symbol:
+        return False
+    if _detect_time_intent(query) != "historical":
+        return False
+    return any(k in query for k in (
+        "财报", "年报", "半年报", "季报", "研报", "公告",
+        "历史行情", "历史数据", "历史走势", "基本面", "营收", "净利润", "毛利率",
+    ))
 
 
 def _is_research_query(query):

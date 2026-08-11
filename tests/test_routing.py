@@ -27,6 +27,33 @@ def test_query_classification():
     assert m._is_vague_query("帮我看看这个") is True
 
 
+def test_historical_report_query():
+    """历史财报/研报类查询应直接走 RAG，而不是漏给通用 LLM。"""
+    assert m._is_historical_report_query("茅台的历史财报") is True
+    assert m._is_historical_report_query("茅台去年的年报") is True
+    assert m._is_historical_report_query("茅台营收情况") is False      # 无历史时间意图
+    assert m._is_historical_report_query("茅台现在多少钱") is False     # 实时意图
+    assert m._is_historical_report_query("读一下茅台的历史财报文件") is False  # 文件读取不劫持
+    assert m._is_historical_report_query("今天天气不错") is False
+
+
+def test_ask_historical_report_routes_to_rag(tmp_path, monkeypatch):
+    """端到端：ask('茅台的历史财报') 必须走 knowledge_fusion。"""
+    sess = str(tmp_path / "session.json")
+    monkeypatch.setattr(m, "SESSION_FILE", sess)
+    calls = {}
+    monkeypatch.setattr(m, "_market_quote", lambda s: calls.setdefault("quote", s))
+
+    def fake_fusion(q, symbol=None, **k):
+        calls["fusion"] = (q, symbol)
+        return "FUSION"
+
+    monkeypatch.setattr(m, "knowledge_fusion", fake_fusion)
+    out = m.ask("茅台的历史财报")
+    assert calls.get("fusion") == ("茅台的历史财报", "sh600519"), calls
+    assert "FUSION" in out
+
+
 def test_corrupt_session_fallback(tmp_path, monkeypatch):
     sess = str(tmp_path / "session.json")
     with open(sess, "w", encoding="utf-8") as f:

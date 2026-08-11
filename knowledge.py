@@ -135,7 +135,13 @@ def _extract_text(path):
             except UnicodeDecodeError:
                 continue
         return ""
-    if ext in (".xlsx", ".xls"):
+    if ext == ".xlsx":
+        try:
+            import excel_utils
+            return excel_utils.read_xlsx(path).to_string(index=False)
+        except Exception:
+            return ""
+    if ext == ".xls":
         try:
             import pandas as pd
             return pd.read_excel(path).to_string(index=False)
