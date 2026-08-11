@@ -811,6 +811,48 @@ def stat_trend(file_path: str, date_column: str = None, value_columns: str = Non
             os.remove(tmp)
 
 
+def stat_vif(file_path, x_columns, password=None):
+    """多重共线性诊断（VIF），供 analyze 内部调用。"""
+    df, tmp = _analysis_df(file_path, password)
+    try:
+        result = analysis.vif(df, x_columns)
+        return f"📐 多重共线性诊断（VIF）\n文件: {file_path}\n\n{analysis.md_table(result)}"
+    except Exception as e:
+        return f"❌ 统计失败: {e}"
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def stat_event(file_path, date_column, return_column, event_date, window=(-5, 5), password=None):
+    """事件研究（AR/CAR），供 analyze 内部调用。"""
+    df, tmp = _analysis_df(file_path, password)
+    try:
+        out, summary = analysis.event_study(df, date_column, return_column, event_date, window)
+        s = " | ".join(f"{k}: {v}" for k, v in summary.items())
+        return (f"📅 事件研究\n文件: {file_path}\n事件日: {event_date}\n{s}\n\n"
+                f"{analysis.md_table(out)}")
+    except Exception as e:
+        return f"❌ 统计失败: {e}"
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def stat_did(file_path, outcome, treat_column, period_column, password=None):
+    """双重差分（DID），供 analyze 内部调用。"""
+    df, tmp = _analysis_df(file_path, password)
+    try:
+        coef, summary = analysis.did(df, outcome, treat_column, period_column)
+        s = " | ".join(f"{k}: {v}" for k, v in summary.items())
+        return (f"🔬 双重差分 DID\n文件: {file_path}\n{s}\n\n{analysis.md_table(coef)}")
+    except Exception as e:
+        return f"❌ 统计失败: {e}"
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def generate_report(
     file_path: str,
     title: str = None,
@@ -820,9 +862,11 @@ def generate_report(
     date_column: str = None,
     ai_comment: bool = True,
     save: bool = True,
+    format: str = "md",
     password: str = None,
 ):
-    """自动生成统计分析报告（Markdown），整合描述/相关/分组/回归/趋势，可选 AI 结论建议。"""
+    """自动生成统计分析报告，整合描述/相关/分组/回归/趋势，可选 AI 结论建议。
+    format 可选：md / docx / pdf。"""
     df, tmp = _analysis_df(file_path, password)
     try:
         sections = []
@@ -907,10 +951,18 @@ def generate_report(
             REPORT_DIR = Path(__file__).parent / "reports"
             REPORT_DIR.mkdir(exist_ok=True)
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_path = REPORT_DIR / f"{Path(file_path).stem}_report_{ts}.md"
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(body)
-            return f"✅ 报告已生成: {out_path}\n\n{body[:1500]}\n\n...（完整报告已保存）"
+            fmt = (format or "md").lower()
+            if fmt == "md":
+                out_path = REPORT_DIR / f"{Path(file_path).stem}_report_{ts}.md"
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(body)
+            elif fmt in ("docx", "pdf"):
+                import export_utils
+                out_path = REPORT_DIR / f"{Path(file_path).stem}_report_{ts}.{fmt}"
+                (export_utils.to_docx if fmt == "docx" else export_utils.to_pdf)(body, out_path)
+            else:
+                return f"❌ 不支持的导出格式: {format}（支持 md / docx / pdf）"
+            return f"✅ 报告已生成: {out_path}\n\n{body[:1200]}\n\n...（完整报告已保存，格式: {fmt}）"
         return body
     except Exception as e:
         return f"❌ 报告生成失败: {e}"
@@ -1389,7 +1441,7 @@ def ask(query: str):
             {"type": "function", "function": {"name": "detect", "description": "文件体检：格式/加密/损坏检测", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
             {"type": "function", "function": {"name": "plot", "description": "画图，24 种类型；source=api 时 file_path 填股票代码画K线/走势", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}, "source": {"type": "string"}, "days": {"type": "integer"}}, "required": ["chart_type", "file_path"]}}},
             {"type": "function", "function": {"name": "clean", "description": "清洗杂乱数据", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
-            {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
+            {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/vif/event/did/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "format": {"type": "string"}, "event_date": {"type": "string"}, "treat_column": {"type": "string"}, "period_column": {"type": "string"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "chain", "description": "数据链：status/track/untrack/snapshot/history/show/cleanup/verify/anchor", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "path": {"type": "string"}, "file_path": {"type": "string"}, "record_id": {"type": "string"}, "keep_versions": {"type": "integer"}, "max_age_days": {"type": "integer"}, "archive": {"type": "boolean"}, "check_live": {"type": "boolean"}, "quick": {"type": "boolean"}}}}},
             {"type": "function", "function": {"name": "knowledge_add", "description": "把文件加入 RAG 知识库", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "knowledge_query", "description": "检索知识库相关内容", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
@@ -1644,7 +1696,7 @@ def knowledge_status():
         return f"❌ 状态查询失败: {e}"
 
 
-def research_agent(topic, symbol=None, top_k=3, save=True):
+def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
     """Agentic 自主研究：行情 → 历史K线/技术指标 → 趋势统计 → 知识库研报 → 预测 → AI 综合结论。"""
     try:
         err = _api_key_error()
@@ -1722,10 +1774,18 @@ def research_agent(topic, symbol=None, top_k=3, save=True):
             REPORT_DIR = Path(__file__).parent / "reports"
             REPORT_DIR.mkdir(exist_ok=True)
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_path = REPORT_DIR / f"{name}_{symbol}_research_{ts}.md"
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(body)
-            return f"✅ 研究报告已生成: {out_path}\n\n{body[:1800]}\n\n...（完整报告已保存）"
+            fmt = (format or "md").lower()
+            if fmt == "md":
+                out_path = REPORT_DIR / f"{name}_{symbol}_research_{ts}.md"
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(body)
+            elif fmt in ("docx", "pdf"):
+                import export_utils
+                out_path = REPORT_DIR / f"{name}_{symbol}_research_{ts}.{fmt}"
+                (export_utils.to_docx if fmt == "docx" else export_utils.to_pdf)(body, out_path)
+            else:
+                return f"❌ 不支持的导出格式: {format}（支持 md / docx / pdf）"
+            return f"✅ 研究报告已生成: {out_path}\n\n{body[:1500]}\n\n...（完整报告已保存，格式: {fmt}）"
         return body
     except Exception as e:
         return f"❌ 研究失败: {e}"
@@ -1931,8 +1991,10 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
             group_column: str = None, value_columns: str = None, agg: str = "mean",
             x_columns: str = None, y_column: str = None, test: str = "ttest",
             date_column: str = None, title: str = None, ai_comment: bool = False,
-            save: bool = False, password: str = None):
-    """统计分析统一入口。analysis 可选：describe/correlation/groupby/regression/test/trend/report。"""
+            save: bool = False, format: str = "md", event_date: str = None,
+            treat_column: str = None, period_column: str = None, password: str = None):
+    """统计分析统一入口。analysis 可选：describe/correlation/groupby/regression/test/trend/
+    vif/event/did/report。"""
     dispatch = {
         "describe": lambda: stat_describe(file_path, columns, password),
         "correlation": lambda: stat_correlation(file_path, columns, password),
@@ -1940,9 +2002,12 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
         "regression": lambda: stat_regression(file_path, x_columns, y_column, password),
         "test": lambda: stat_test(file_path, group_column, y_column or value_columns, test, password),
         "trend": lambda: stat_trend(file_path, date_column, value_columns, password),
+        "vif": lambda: stat_vif(file_path, x_columns, password),
+        "event": lambda: stat_event(file_path, date_column, y_column, event_date, password=password),
+        "did": lambda: stat_did(file_path, y_column, treat_column, period_column, password),
         "report": lambda: generate_report(file_path, title=title, group_column=group_column,
                                           x_columns=x_columns, y_column=y_column, date_column=date_column,
-                                          ai_comment=ai_comment, save=save, password=password),
+                                          ai_comment=ai_comment, save=save, format=format, password=password),
     }
     fn = dispatch.get(analysis)
     if not fn:

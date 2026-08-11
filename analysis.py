@@ -189,6 +189,19 @@ def regression(df, x_columns, y_column):
         se = np.full(k, np.nan)
     tvals = beta / se
     pvals = 2 * (1 - stats.t.cdf(np.abs(tvals), df=n - k))
+
+    # 稳健标准误（Huber-White）：应对异方差，论文审稿常见要求
+    try:
+        XtX_inv = np.linalg.inv(Xd.T @ Xd)
+        meat = Xd.T @ np.diag(resid ** 2) @ Xd
+        cov_rob = XtX_inv @ meat @ XtX_inv
+        se_rob = np.sqrt(np.abs(np.diag(cov_rob)))
+        t_rob = beta / se_rob
+        p_rob = 2 * (1 - stats.t.cdf(np.abs(t_rob), df=n - k))
+    except Exception:
+        se_rob = np.full(k, np.nan)
+        p_rob = np.full(k, np.nan)
+
     f = ((sst - sse) / (k - 1)) / mse if k > 1 and mse > 0 else float("nan")
     fp = 1 - stats.f.cdf(f, k - 1, n - k) if not np.isnan(f) else float("nan")
 
@@ -198,6 +211,8 @@ def regression(df, x_columns, y_column):
         "标准误": np.round(se, 6),
         "t 值": np.round(tvals, 4),
         "p 值": np.round(pvals, 6),
+        "稳健标准误": np.round(se_rob, 6),
+        "稳健 p 值": np.round(p_rob, 6),
         "显著性": [significance_star(p) for p in pvals],
     })
     summary = {
@@ -213,7 +228,7 @@ def regression(df, x_columns, y_column):
 # ==================== 显著性检验 ====================
 
 def stat_test(df, group_column, value_column, test="ttest"):
-    """t 检验（两组）或单因素 ANOVA（多组）。"""
+    """参数检验：ttest（两组）/ anova（多组）；非参数：mannwhitney（两组）/ kruskal（多组）。"""
     if group_column not in df.columns or value_column not in df.columns:
         raise ValueError("分组列或数值列不存在")
     data = df[[group_column, value_column]].dropna()
@@ -230,7 +245,115 @@ def stat_test(df, group_column, value_column, test="ttest"):
         f, p = stats.f_oneway(*groups)
         return {"检验": "单因素方差分析 ANOVA", "统计量": round(float(f), 4),
                 "p 值": round(float(p), 6), "显著性": significance_star(p), "分组数": len(groups)}
-    raise ValueError(f"不支持的检验: {test}，可用: ttest / anova")
+    if test == "mannwhitney":
+        if len(groups) != 2:
+            raise ValueError("Mann-Whitney 只支持 2 个分组，请改用 kruskal")
+        u, p = stats.mannwhitneyu(groups[0], groups[1], alternative="two-sided")
+        return {"检验": "Mann-Whitney U 非参数检验", "统计量": round(float(u), 4),
+                "p 值": round(float(p), 6), "显著性": significance_star(p), "分组数": 2}
+    if test == "kruskal":
+        h, p = stats.kruskal(*groups)
+        return {"检验": "Kruskal-Wallis H 非参数检验", "统计量": round(float(h), 4),
+                "p 值": round(float(p), 6), "显著性": significance_star(p), "分组数": len(groups)}
+    raise ValueError(f"不支持的检验: {test}，可用: ttest / anova / mannwhitney / kruskal")
+
+
+def vif(df, x_columns):
+    """多重共线性诊断：方差膨胀因子 VIF（>10 严重，>5 中等）。"""
+    xs = [c.strip() for c in x_columns.split(",") if c.strip()]
+    if not xs:
+        raise ValueError("请指定自变量（x_columns，逗号分隔）")
+    missing = [c for c in xs if c not in df.columns]
+    if missing:
+        raise ValueError(f"自变量列不存在: {missing}")
+    if len(xs) < 2:
+        raise ValueError("VIF 至少需要 2 个自变量")
+    data = df[xs].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(data) < 3:
+        raise ValueError("有效样本不足")
+    try:
+        inv_corr = np.linalg.inv(data.corr().to_numpy())
+    except Exception:
+        raise ValueError("相关矩阵不可逆（存在完全共线性），无法计算 VIF")
+    rows = []
+    for i, c in enumerate(xs):
+        v = float(inv_corr[i][i])
+        rows.append({"变量": c, "VIF": round(v, 3),
+                     "判断": "严重共线性" if v > 10 else ("中等共线性" if v > 5 else "正常")})
+    return pd.DataFrame(rows)
+
+
+def event_study(df, date_column, return_column, event_date, window=(-5, 5)):
+    """事件研究：以事件日前后窗口计算异常收益 AR 与累计异常收益 CAR。
+    正常收益用事件窗口外的均值收益估计。返回 (AR/CAR 表, 摘要 dict)。"""
+    if date_column not in df.columns or return_column not in df.columns:
+        raise ValueError("日期列或收益率列不存在")
+    data = df[[date_column, return_column]].copy()
+    data[date_column] = pd.to_datetime(data[date_column], errors="coerce")
+    data[return_column] = pd.to_numeric(data[return_column], errors="coerce")
+    data = data.dropna().sort_values(date_column).reset_index(drop=True)
+    event = pd.to_datetime(event_date, errors="coerce")
+    if pd.isna(event):
+        raise ValueError(f"事件日期无法解析: {event_date}")
+    est = data[(data[date_column] < event + pd.Timedelta(days=window[0]))]
+    if len(est) < 5:
+        raise ValueError("估计窗口样本不足（事件前数据少于 5 期）")
+    normal = float(est[return_column].mean())
+    win = data[(data[date_column] >= event + pd.Timedelta(days=window[0])) &
+               (data[date_column] <= event + pd.Timedelta(days=window[1]))].copy()
+    if win.empty:
+        raise ValueError("事件窗口内无数据")
+    win["AR"] = win[return_column] - normal
+    win["CAR"] = win["AR"].cumsum()
+    out = pd.DataFrame({
+        "日期": win[date_column].dt.strftime("%Y-%m-%d"),
+        "收益率%": np.round(win[return_column] * 100, 4),
+        "异常收益AR%": np.round(win["AR"] * 100, 4),
+        "累计异常收益CAR%": np.round(win["CAR"] * 100, 4),
+    })
+    summary = {"正常收益(估计)%": round(normal * 100, 4),
+               "窗口CAR%": round(float(win["CAR"].iloc[-1] * 100), 4),
+               "窗口天数": len(win)}
+    return out, summary
+
+
+def did(df, outcome, treat_column, period_column):
+    """双重差分 DID：OLS 估计 treat×post 交互项（DID 估计量）。
+    treat/period 需为 0/1 二值列。返回 (系数表, 摘要)。"""
+    for c in (outcome, treat_column, period_column):
+        if c not in df.columns:
+            raise ValueError(f"列不存在: {c}")
+    data = df[[outcome, treat_column, period_column]].copy()
+    for c in (outcome, treat_column, period_column):
+        data[c] = pd.to_numeric(data[c], errors="coerce")
+    data = data.dropna()
+    if not set(data[treat_column].unique()).issubset({0, 1}) or not set(data[period_column].unique()).issubset({0, 1}):
+        raise ValueError("treat_column 与 period_column 需为 0/1 二值列")
+    data["treat_post"] = data[treat_column] * data[period_column]
+    y = data[outcome].to_numpy(dtype=float)
+    X = np.column_stack([np.ones(len(y)), data[treat_column], data[period_column], data["treat_post"]])
+    n, k = len(y), X.shape[1]
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    resid = y - X @ beta
+    sse = float((resid ** 2).sum())
+    sst = float(((y - y.mean()) ** 2).sum())
+    r2 = 1 - sse / sst if sst > 0 else 0.0
+    mse = sse / (n - k)
+    try:
+        se = np.sqrt(np.abs(np.diag(np.linalg.inv(X.T @ X) * mse)))
+    except Exception:
+        se = np.full(k, np.nan)
+    tvals = beta / se
+    pvals = 2 * (1 - stats.t.cdf(np.abs(tvals), df=n - k))
+    coef = pd.DataFrame({
+        "变量": ["截距", "组别(treat)", "时期(post)", "DID 估计量(treat×post)"],
+        "系数": np.round(beta, 6),
+        "标准误": np.round(se, 6),
+        "t 值": np.round(tvals, 4),
+        "p 值": np.round(pvals, 6),
+        "显著性": [significance_star(p) for p in pvals],
+    })
+    return coef, {"DID估计量": round(float(beta[3]), 6), "R²": round(r2, 4), "样本量": n}
 
 
 # ==================== 时间趋势 ====================

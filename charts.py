@@ -18,6 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 
 plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
 plt.rcParams["axes.unicode_minus"] = False
@@ -378,6 +379,75 @@ def _technical(fig, df, p):
     _title(ax1, p, "技术面分析")
 
 
+def _wordcloud(fig, df, p):
+    """词云：x_column 为文本列（中文自动 jieba 分词）。"""
+    _need(df, p["x"], "文本列")
+    try:
+        import jieba
+        from wordcloud import WordCloud
+    except ImportError as e:
+        raise ValueError(f"词云需要安装 wordcloud 和 jieba：pip install wordcloud jieba（{e}）") from e
+    text = " ".join(jieba.cut(" ".join(df[p["x"]].astype(str).tolist())))
+    font_path = r"C:\Windows\Fonts\msyh.ttc"
+    wc = WordCloud(font_path=font_path if os.path.exists(font_path) else None,
+                   width=1000, height=600, background_color="white", max_words=100).generate(text)
+    ax = fig.add_subplot(111)
+    ax.imshow(wc)
+    ax.axis("off")
+    _title(ax, p, "词云")
+
+
+def _sankey(fig, df, p):
+    """桑基图：x_column=源、y_column=目标、value_column=流量。"""
+    _need(df, p["x"], "源"); _need(df, p["y"], "目标"); _need(df, p["value"], "流量")
+    data = pd.DataFrame({
+        "src": df[p["x"]].astype(str),
+        "dst": df[p["y"]].astype(str),
+        "val": pd.to_numeric(df[p["value"]], errors="coerce").fillna(0),
+    })
+    data = data[data["val"] > 0]
+    if data.empty:
+        raise ValueError("没有正流量数据，无法绘制桑基图")
+
+    src_nodes = sorted(data["src"].unique())
+    dst_nodes = sorted(data["dst"].unique())
+    out_flows = data.groupby("src")["val"].sum().to_dict()
+    in_flows = data.groupby("dst")["val"].sum().to_dict()
+
+    def positions(nodes, flows):
+        total = sum(flows.get(n, 0) for n in nodes) or 1
+        ys, y = {}, 0.95
+        for n in nodes:
+            h = 0.8 * flows.get(n, 0) / total
+            ys[n] = (y, y - h)
+            y -= h + 0.02
+        return ys
+
+    src_ys = positions(src_nodes, out_flows)
+    dst_ys = positions(dst_nodes, in_flows)
+    x0, x1 = 0.08, 0.92
+    import matplotlib.patches as mpatches
+    from matplotlib.path import Path as MPath
+
+    ax = fig.add_subplot(111)
+    for n, (ya, yb) in src_ys.items():
+        ax.add_patch(mpatches.Rectangle((x0 - 0.012, yb), 0.024, ya - yb, color="#4e79a7"))
+        ax.text(x0 - 0.018, (ya + yb) / 2, n, ha="right", va="center", fontsize=8)
+    for n, (ya, yb) in dst_ys.items():
+        ax.add_patch(mpatches.Rectangle((x1 - 0.012, yb), 0.024, ya - yb, color="#f28e2b"))
+        ax.text(x1 + 0.018, (ya + yb) / 2, n, ha="left", va="center", fontsize=8)
+
+    colors = plt.cm.tab20(np.linspace(0, 1, len(data)))
+    for (_, r), color in zip(data.iterrows(), colors):
+        m0 = (src_ys[r["src"]][0] + src_ys[r["src"]][1]) / 2
+        m1 = (dst_ys[r["dst"]][0] + dst_ys[r["dst"]][1]) / 2
+        verts = [(x0, m0), (0.5, m0), (0.5, m1), (x1, m1)]
+        codes = [MPath.MOVETO, MPath.CURVE4, MPath.CURVE4, MPath.CURVE4]
+        ax.add_patch(mpatches.PathPatch(MPath(verts, codes), fc=color, alpha=0.35, ec="none"))
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+    _title(ax, p, "桑基图")
+
+
 def _treemap(fig, df, p):
     try:
         import squarify
@@ -439,6 +509,8 @@ HANDLERS = {
     "polar": _polar,
     "errorbar": _errorbar,
     "technical": _technical,
+    "wordcloud": _wordcloud,
+    "sankey": _sankey,
     "treemap": _treemap,
     "scatter3d": _scatter3d,
     "surface": _surface,

@@ -58,6 +58,49 @@ def _normalize_symbol(symbol):
     return "sh" + symbol
 
 
+def _strip_prefix(symbol):
+    return re.sub(r"^(sh|sz|bj|hk|us)", "", symbol, flags=re.I)
+
+
+def _ak_quote(symbol):
+    """AkShare（东方财富）实时行情回退。"""
+    import akshare as ak
+    code = _strip_prefix(symbol)
+    info = ak.stock_individual_info_em(symbol=code)
+    name = code
+    for _, row in info.iterrows():
+        if str(row.get("item", "")) == "股票简称":
+            name = str(row.get("value", code))
+    spot = ak.stock_zh_a_spot_em()
+    row = spot[spot["代码"] == code]
+    if row.empty:
+        raise ValueError(f"AkShare 未找到 {code}")
+    r = row.iloc[0]
+    return {
+        "名称": name, "代码": code,
+        "现价": r.get("最新价"), "昨收": r.get("昨收"), "今开": r.get("今开"),
+        "成交量": r.get("成交量"), "涨跌幅%": r.get("涨跌幅"),
+        "最高": r.get("最高"), "最低": r.get("最低"),
+        "换手率%": r.get("换手率"), "市盈率": r.get("市盈率-动态"),
+        "来源": "AkShare(东方财富)",
+    }
+
+
+def _ak_kline(symbol, days=120):
+    """AkShare（东方财富）日K线回退。"""
+    import akshare as ak
+    import pandas as pd
+    code = _strip_prefix(symbol)
+    hist = ak.stock_zh_a_hist(symbol=code, period="daily", adjust="qfq")
+    hist = hist.tail(days).reset_index(drop=True)
+    return pd.DataFrame({
+        "日期": hist["日期"].astype(str),
+        "开盘": hist["开盘"], "收盘": hist["收盘"],
+        "最高": hist["最高"], "最低": hist["最低"],
+        "成交量": hist["成交量"],
+    })
+
+
 def quote(symbol):
     """获取实时行情。返回字典：名称、现价、涨跌幅、成交量等。"""
     norm = _normalize_symbol(symbol)
@@ -66,11 +109,16 @@ def quote(symbol):
         data["来源"] = "腾讯行情"
         return data
     except Exception as e:
-        # 回退：yfinance（美股/港股等）
+        # 回退1：AkShare（东方财富，国内直连）
+        try:
+            return _ak_quote(symbol)
+        except Exception as e2:
+            pass
+        # 回退2：yfinance（美股/港股等）
         try:
             import yfinance as yf
         except ImportError:
-            raise ValueError(f"腾讯行情获取失败: {e}（未安装 yfinance，无法回退海外行情）") from e
+            raise ValueError(f"腾讯/AkShare 行情均失败: {e} / {e2}（未安装 yfinance）") from e
         t = yf.Ticker(symbol)
         info = t.fast_info
         return {
@@ -102,7 +150,12 @@ def kline(symbol, days=60):
             df[c] = pd.to_numeric(df[c], errors="coerce")
         return df
     except Exception as e:
-        # 海外标的回退 yfinance（需可访问 Yahoo）
+        # 回退1：AkShare（东方财富，国内直连）
+        try:
+            return _ak_kline(symbol, days)
+        except Exception as e2:
+            pass
+        # 回退2：海外标的回退 yfinance（需可访问 Yahoo）
         try:
             import yfinance as yf
             t = yf.Ticker(symbol)
@@ -116,9 +169,9 @@ def kline(symbol, days=60):
                 "成交量": h["Volume"].to_numpy(),
             })
         except ImportError:
-            raise ValueError(f"腾讯K线获取失败: {e}（未安装 yfinance，无法回退海外K线）") from e
-        except Exception as e2:
-            raise ValueError(f"腾讯与 yfinance 均获取失败（{symbol}）: {e} / {e2}") from e2
+            raise ValueError(f"腾讯/AkShare K线均失败: {e} / {e2}（未安装 yfinance）") from e
+        except Exception as e3:
+            raise ValueError(f"腾讯/AkShare/yfinance K线均失败（{symbol}）: {e} / {e2} / {e3}") from e3
 
 
 def indicators(df):
@@ -140,8 +193,12 @@ def indicators(df):
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
-    rs = gain / loss.replace(0, np.nan)
-    df["RSI"] = 100 - 100 / (1 + rs)
+    flat = (gain == 0) & (loss == 0)
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, np.nan))
+    rsi = rsi.fillna(100.0)          # 无亏损期（含全上涨）→ 100
+    rsi = rsi.where(~flat, 50.0)     # 横盘 → 50
+    rsi = rsi.where(~((gain == 0) & (loss > 0)), 0.0)  # 无上涨有亏损 → 0
+    df["RSI"] = rsi
 
     mid = close.rolling(20).mean()
     std = close.rolling(20).std()
