@@ -12,6 +12,7 @@ knowledge/
 cleaned/
 reports/
 charts/
+cache/
 
 # 日志与临时文件
 *.log

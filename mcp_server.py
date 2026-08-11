@@ -1015,7 +1015,7 @@ def _load_data(file_path: str):
     else:
         raise ValueError(f"不支持的文件类型: {ext}")
 
-def _plot(chart_type, file_path, password=None, source="local", days=60, **kwargs):
+def _plot(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
     tmp_path = None
     fig = None
@@ -1026,7 +1026,7 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, **kwarg
             # 实时行情来源：直接拉取日K线（如 K线图/收盘价走势）
             if chart_type not in ("candlestick", "line", "technical", "area", "step"):
                 return f"❌ 行情来源（source='api'）仅支持走势类图表：candlestick / line / technical / area / step"
-            df = market_data.kline(file_path, days)
+            df = market_data.kline(file_path, days, period)
             if chart_type == "technical":
                 df = market_data.indicators(df)
         else:
@@ -1082,6 +1082,7 @@ def plot_chart(
     password: str = None,
     source: str = "local",
     days: int = 60,
+    period: str = "daily",
 ):
     """通用图表工具，支持 24 种图表类型。
 
@@ -1093,7 +1094,7 @@ def plot_chart(
                  y_columns=y_columns, value_column=value_column, open_column=open_column,
                  high_column=high_column, low_column=low_column, close_column=close_column,
                  size_column=size_column, error_column=error_column, title=title,
-                 source=source, days=days)
+                 source=source, days=days, period=period)
 
 
 # ==================== Phase 3: 自然语言交互 ====================
@@ -1437,15 +1438,15 @@ def ask(query: str):
         ]
         tools = [
             {"type": "function", "function": {"name": "search", "description": "搜索文件（keyword 留空则列出数据文件）", "parameters": {"type": "object", "properties": {"keyword": {"type": "string"}, "directory": {"type": "string"}, "recursive": {"type": "boolean"}}}}},
-            {"type": "function", "function": {"name": "read", "description": "读取：本地文件（CSV/Excel/Word/PDF/文本/图片OCR）或 source=api 实时行情/日K线（kline=True）", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "source": {"type": "string"}, "sheet_name": {"type": "string"}, "max_pages": {"type": "integer"}, "ocr": {"type": "boolean"}, "password": {"type": "string"}, "kline": {"type": "boolean"}, "days": {"type": "integer"}}}}},
+            {"type": "function", "function": {"name": "read", "description": "读取：本地文件（CSV/Excel/Word/PDF/文本/图片OCR）或 source=api 行情/K线（period=daily/weekly/monthly）/交叉验证", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "source": {"type": "string"}, "sheet_name": {"type": "string"}, "max_pages": {"type": "integer"}, "ocr": {"type": "boolean"}, "password": {"type": "string"}, "kline": {"type": "boolean"}, "days": {"type": "integer"}, "period": {"type": "string"}, "cross_check": {"type": "boolean"}}}}},
             {"type": "function", "function": {"name": "detect", "description": "文件体检：格式/加密/损坏检测", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
-            {"type": "function", "function": {"name": "plot", "description": "画图，24 种类型；source=api 时 file_path 填股票代码画K线/走势", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}, "source": {"type": "string"}, "days": {"type": "integer"}}, "required": ["chart_type", "file_path"]}}},
+            {"type": "function", "function": {"name": "plot", "description": "画图，27 种类型；source=api 时 file_path 填股票代码画K线/走势/技术面", "parameters": {"type": "object", "properties": {"chart_type": {"type": "string"}, "file_path": {"type": "string"}, "x_column": {"type": "string"}, "y_column": {"type": "string"}, "y_columns": {"type": "string"}, "value_column": {"type": "string"}, "open_column": {"type": "string"}, "high_column": {"type": "string"}, "low_column": {"type": "string"}, "close_column": {"type": "string"}, "size_column": {"type": "string"}, "error_column": {"type": "string"}, "title": {"type": "string"}, "password": {"type": "string"}, "source": {"type": "string"}, "days": {"type": "integer"}, "period": {"type": "string"}}, "required": ["chart_type", "file_path"]}}},
             {"type": "function", "function": {"name": "clean", "description": "清洗杂乱数据", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "save": {"type": "boolean"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
-            {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/vif/event/did/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "format": {"type": "string"}, "event_date": {"type": "string"}, "treat_column": {"type": "string"}, "period_column": {"type": "string"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
+            {"type": "function", "function": {"name": "analyze", "description": "统计分析：describe/correlation/groupby/regression/test/trend/vif/event/did/backtest/report", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "analysis": {"type": "string"}, "columns": {"type": "string"}, "group_column": {"type": "string"}, "value_columns": {"type": "string"}, "agg": {"type": "string"}, "x_columns": {"type": "string"}, "y_column": {"type": "string"}, "test": {"type": "string"}, "date_column": {"type": "string"}, "title": {"type": "string"}, "ai_comment": {"type": "boolean"}, "save": {"type": "boolean"}, "format": {"type": "string"}, "event_date": {"type": "string"}, "treat_column": {"type": "string"}, "period_column": {"type": "string"}, "signal_column": {"type": "string"}, "initial_capital": {"type": "number"}, "fee_rate": {"type": "number"}, "password": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "chain", "description": "数据链：status/track/untrack/snapshot/history/show/cleanup/verify/anchor", "parameters": {"type": "object", "properties": {"action": {"type": "string"}, "path": {"type": "string"}, "file_path": {"type": "string"}, "record_id": {"type": "string"}, "keep_versions": {"type": "integer"}, "max_age_days": {"type": "integer"}, "archive": {"type": "boolean"}, "check_live": {"type": "boolean"}, "quick": {"type": "boolean"}}}}},
             {"type": "function", "function": {"name": "knowledge_add", "description": "把文件加入 RAG 知识库", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
-            {"type": "function", "function": {"name": "knowledge_query", "description": "检索知识库相关内容", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
-            {"type": "function", "function": {"name": "knowledge_fusion", "description": "结合知识库与实时行情做综合分析", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "symbol": {"type": "string"}, "top_k": {"type": "integer"}}, "required": ["query_text"]}}},
+            {"type": "function", "function": {"name": "knowledge_query", "description": "检索知识库（向量+BM25 混合）", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "top_k": {"type": "integer"}, "hybrid": {"type": "boolean"}}, "required": ["query_text"]}}},
+            {"type": "function", "function": {"name": "knowledge_fusion", "description": "结合知识库与实时行情综合分析（use_local=True 用本地模型）", "parameters": {"type": "object", "properties": {"query_text": {"type": "string"}, "symbol": {"type": "string"}, "top_k": {"type": "integer"}, "use_local": {"type": "boolean"}}, "required": ["query_text"]}}},
             {"type": "function", "function": {"name": "knowledge_clear", "description": "清空整个知识库", "parameters": {"type": "object", "properties": {}}}},
             {"type": "function", "function": {"name": "knowledge_remove", "description": "按文件路径从知识库移除文档", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
             {"type": "function", "function": {"name": "knowledge_list", "description": "列出知识库中的文档", "parameters": {"type": "object", "properties": {}}}},
@@ -1507,8 +1508,10 @@ def _market_quote(symbol):
         data = market_data.quote(symbol)
         lines = [f"📈 实时行情 {data.get('名称', '')}（{data.get('代码', symbol)}）",
                  f"来源: {data.get('来源', '')}"]
+        if data.get("_cached"):
+            lines.append("（数据来自本地缓存，可能非最新）")
         for k, v in data.items():
-            if k in ("名称", "代码", "来源"):
+            if k in ("名称", "代码", "来源", "_cached"):
                 continue
             if v is not None:
                 lines.append(f"  {k}: {v}")
@@ -1522,11 +1525,12 @@ def _market_quote(symbol):
         return f"❌ 行情获取失败: {e}"
 
 
-def _market_kline(symbol, days=60):
+def _market_kline(symbol, days=60, period="daily"):
     """历史日K线：read(source="api", kline=True)。"""
     try:
-        df = market_data.kline(symbol, days)
-        lines = [f"📊 {symbol} 日K线（最近 {len(df)} 个交易日，前复权）",
+        df = market_data.kline(symbol, days, period)
+        label = {"weekly": "周", "monthly": "月"}.get(period, "日")
+        lines = [f"📊 {symbol} {label}K线（最近 {len(df)} 根，前复权）",
                  "  日期        开盘     收盘     最高     最低      成交量(手)"]
         for _, r in df.tail(min(20, len(df))).iterrows():
             lines.append(f"  {r['日期']}  {r['开盘']:>8.2f} {r['收盘']:>8.2f} "
@@ -1536,6 +1540,18 @@ def _market_kline(symbol, days=60):
         return "\n".join(lines)
     except Exception as e:
         return f"❌ K线获取失败: {e}"
+
+
+def _market_cross_check(symbol):
+    """多源交叉验证：腾讯 vs AkShare。"""
+    try:
+        rows, verdict = market_data.cross_check(symbol)
+        lines = [f"🔀 多源交叉验证: {symbol}", verdict]
+        for r in rows:
+            lines.append(f"  {r['指标']}: 腾讯={r['腾讯']} | AkShare(东财)={r['AkShare(东财)']}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ 交叉验证失败: {e}"
 
 
 def _vision_parse(file_path):
@@ -1594,15 +1610,16 @@ def knowledge_add(file_path, password=None):
         return f"❌ 加入知识库失败: {e}"
 
 
-def knowledge_query(query_text, top_k=5):
-    """检索 RAG 知识库（供 ask 内部调用）。"""
+def knowledge_query(query_text, top_k=5, hybrid=True):
+    """检索 RAG 知识库（向量+BM25 混合，供 ask 内部调用）。"""
     try:
-        results = knowledge.query(query_text, top_k)
+        results = knowledge.query(query_text, top_k, hybrid=hybrid)
         if not results:
             return "📚 知识库为空或暂无相关内容"
         lines = [f"📚 知识库检索（top {len(results)}）"]
         for i, r in enumerate(results, 1):
-            lines.append(f"[{i}] 来源: {r['来源']}（距离 {r['距离']}）")
+            score = f"，综合分 {r.get('综合分', '-')}" if r.get("综合分") is not None else ""
+            lines.append(f"[{i}] 来源: {r['来源']}（距离 {r['距离']}{score}）")
             lines.append(r["内容"][:500])
             lines.append("")
         lines.append("📌 来源：RAG 知识库（本地向量检索）")
@@ -1612,12 +1629,9 @@ def knowledge_query(query_text, top_k=5):
         return f"❌ 知识库查询失败: {e}"
 
 
-def knowledge_fusion(query_text, symbol=None, top_k=3):
+def knowledge_fusion(query_text, symbol=None, top_k=3, use_local=False):
     """多源融合：历史研报（RAG）+ 当前行情（实时数据源）+ AI 综合分析。"""
     try:
-        err = _api_key_error()
-        if err:
-            return err
         docs = knowledge.query(query_text, top_k)
         if not docs:
             return "❌ 知识库为空，请先添加文档（例如：把研报.txt 添加到知识库）"
@@ -1631,19 +1645,28 @@ def knowledge_fusion(query_text, symbol=None, top_k=3):
                 quote_txt = f"（行情获取失败: {e}）"
         ctx += f"\n【当前行情】\n{quote_txt}"
 
-        client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-        resp = client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=[
-                {"role": "system", "content": "你是金融分析师，请结合历史研报知识与当前行情，"
-                                               "给出客观的投资分析结论，中文，500 字以内。"},
-                {"role": "user", "content": f"问题: {query_text}\n\n{ctx[:6000]}"},
-            ],
-            max_tokens=900,
-        )
-        out = resp.choices[0].message.content or "（模型未返回内容）"
+        prompt = f"你是金融分析师，请结合历史研报知识与当前行情，给出客观的投资分析结论，中文，500 字以内。\n\n问题: {query_text}\n\n{ctx[:6000]}"
+        out = None
+        if use_local:
+            import local_llm
+            out = local_llm.complete(prompt, max_tokens=900)
+        if out is None:
+            err = _api_key_error()
+            if err:
+                return err
+            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+            resp = client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{"role": "system", "content": "你是金融分析师，请结合历史研报知识与当前行情，"
+                                                        "给出客观的投资分析结论，中文，500 字以内。"},
+                          {"role": "user", "content": f"问题: {query_text}\n\n{ctx[:6000]}"}],
+                max_tokens=900,
+            )
+            out = resp.choices[0].message.content or "（模型未返回内容）"
         out += "\n\n📌 来源：RAG 知识库 + 实时行情（多源融合）"
         out += "\n如需只看实时价格，回复：切换到实时数据；只看研报，回复：切换到历史数据"
+        if docs:
+            out += "\n\n📚 引用来源：\n" + "\n".join(f"- {d['来源']}" for d in docs[:3])
         if symbol:
             session = load_session()
             session["last_market_symbol"] = symbol
@@ -1651,6 +1674,25 @@ def knowledge_fusion(query_text, symbol=None, top_k=3):
         return out
     except Exception as e:
         return f"❌ 融合分析失败: {e}"
+
+
+def stat_backtest(file_path, signal_column, price_column="收盘", initial_capital=100000.0,
+                  fee_rate=0.001, password=None):
+    """策略回测（供 analyze 内部调用）。"""
+    df, tmp = _analysis_df(file_path, password)
+    try:
+        import backtest
+        metrics, equity_df = backtest.backtest(df, signal_column, price_column,
+                                               initial_capital=initial_capital, fee_rate=fee_rate)
+        lines = [f"📊 策略回测\n文件: {file_path}",
+                 "指标: " + " | ".join(f"{k}: {v}" for k, v in metrics.items()),
+                 "", "净值曲线（前 20 期）:", analysis.md_table(equity_df.head(20))]
+        return "\n".join(lines)
+    except Exception as e:
+        return f"❌ 回测失败: {e}"
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def knowledge_clear():
@@ -1949,12 +1991,14 @@ def _context_ops(session):
 @mcp.tool
 def read(file_path: str = None, source: str = "local", sheet_name: str = None,
          max_pages: int = 3, ocr: bool = True, password: str = None,
-         kline: bool = False, days: int = 60):
+         kline: bool = False, days: int = 60, period: str = "daily", cross_check: bool = False):
     """读取数据。source="local" 读本地文件（含图片视觉解析）；source="api" 查行情（file_path 填股票代码）；
-    kline=True 时返回历史日K线（days 控制天数）。"""
+    kline=True 返回历史K线（days 天数，period 可 daily/weekly/monthly）；cross_check=True 做腾讯/AkShare 交叉验证。"""
     if source == "api":
+        if cross_check:
+            return _market_cross_check(file_path)
         if kline:
-            return _market_kline(file_path, days)
+            return _market_kline(file_path, days, period)
         return _market_quote(file_path)
     if not file_path:
         return "❌ 请提供 file_path（本地文件路径），或使用 source='api' 查询行情"
@@ -1977,13 +2021,13 @@ def plot(chart_type: str, file_path: str, x_column: str = None, y_column: str = 
          y_columns: str = None, value_column: str = None, open_column: str = None,
          high_column: str = None, low_column: str = None, close_column: str = None,
          size_column: str = None, error_column: str = None, title: str = None,
-         password: str = None, source: str = "local", days: int = 60):
+         password: str = None, source: str = "local", days: int = 60, period: str = "daily"):
     """画图，支持 24 种图表类型；source="api" 时 file_path 填股票代码，直接画实时/历史K线或走势。"""
     return plot_chart(chart_type, file_path, x_column=x_column, y_column=y_column,
                       y_columns=y_columns, value_column=value_column, open_column=open_column,
                       high_column=high_column, low_column=low_column, close_column=close_column,
                       size_column=size_column, error_column=error_column, title=title,
-                      password=password, source=source, days=days)
+                      password=password, source=source, days=days, period=period)
 
 
 @mcp.tool
@@ -1992,7 +2036,9 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
             x_columns: str = None, y_column: str = None, test: str = "ttest",
             date_column: str = None, title: str = None, ai_comment: bool = False,
             save: bool = False, format: str = "md", event_date: str = None,
-            treat_column: str = None, period_column: str = None, password: str = None):
+            treat_column: str = None, period_column: str = None,
+            signal_column: str = None, initial_capital: float = 100000.0,
+            fee_rate: float = 0.001, password: str = None):
     """统计分析统一入口。analysis 可选：describe/correlation/groupby/regression/test/trend/
     vif/event/did/report。"""
     dispatch = {
@@ -2005,6 +2051,8 @@ def analyze(file_path: str, analysis: str = "describe", columns: str = None,
         "vif": lambda: stat_vif(file_path, x_columns, password),
         "event": lambda: stat_event(file_path, date_column, y_column, event_date, password=password),
         "did": lambda: stat_did(file_path, y_column, treat_column, period_column, password),
+        "backtest": lambda: stat_backtest(file_path, signal_column, y_column or "收盘",
+                                          initial_capital=initial_capital, fee_rate=fee_rate, password=password),
         "report": lambda: generate_report(file_path, title=title, group_column=group_column,
                                           x_columns=x_columns, y_column=y_column, date_column=date_column,
                                           ai_comment=ai_comment, save=save, format=format, password=password),

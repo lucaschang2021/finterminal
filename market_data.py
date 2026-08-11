@@ -8,7 +8,44 @@
 调用方式（经 read 工具）：read(source="api", file_path="sh600519")
 """
 
+import hashlib
+import json
 import re
+import time
+from pathlib import Path
+
+import pandas as pd
+
+CACHE_DIR = Path(__file__).parent / "cache" / "market"
+
+
+def _json_default(o):
+    """JSON 序列化兜底：转换 numpy 标量等。"""
+    if hasattr(o, "item"):
+        try:
+            return o.item()
+        except Exception:
+            return str(o)
+    return str(o)
+
+
+def _cache_get(key, ttl):
+    try:
+        p = CACHE_DIR / (hashlib.md5(key.encode()).hexdigest() + ".json")
+        if p.exists() and time.time() - p.stat().st_mtime < ttl:
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set(key, data):
+    try:
+        p = CACHE_DIR / (hashlib.md5(key.encode()).hexdigest() + ".json")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, ensure_ascii=False, default=_json_default), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _fetch_tencent(symbol):
@@ -86,12 +123,12 @@ def _ak_quote(symbol):
     }
 
 
-def _ak_kline(symbol, days=120):
+def _ak_kline(symbol, days=120, period="daily"):
     """AkShare（东方财富）日K线回退。"""
     import akshare as ak
     import pandas as pd
     code = _strip_prefix(symbol)
-    hist = ak.stock_zh_a_hist(symbol=code, period="daily", adjust="qfq")
+    hist = ak.stock_zh_a_hist(symbol=code, period=period, adjust="qfq")
     hist = hist.tail(days).reset_index(drop=True)
     return pd.DataFrame({
         "日期": hist["日期"].astype(str),
@@ -101,8 +138,21 @@ def _ak_kline(symbol, days=120):
     })
 
 
-def quote(symbol):
-    """获取实时行情。返回字典：名称、现价、涨跌幅、成交量等。"""
+def quote(symbol, use_cache=True):
+    """获取实时行情（带 30 秒本地缓存）。返回字典：名称、现价、涨跌幅、成交量等。"""
+    key = f"quote:{symbol}"
+    if use_cache:
+        cached = _cache_get(key, 30)
+        if cached:
+            cached = dict(cached)
+            cached["_cached"] = True
+            return cached
+    data = _quote_fetch(symbol)
+    _cache_set(key, data)
+    return data
+
+
+def _quote_fetch(symbol):
     norm = _normalize_symbol(symbol)
     try:
         data = _fetch_tencent(norm)
@@ -110,10 +160,11 @@ def quote(symbol):
         return data
     except Exception as e:
         # 回退1：AkShare（东方财富，国内直连）
+        e2 = None
         try:
             return _ak_quote(symbol)
-        except Exception as e2:
-            pass
+        except Exception as ex:
+            e2 = ex
         # 回退2：yfinance（美股/港股等）
         try:
             import yfinance as yf
@@ -129,20 +180,41 @@ def quote(symbol):
         }
 
 
-def kline(symbol, days=60):
-    """获取日K线（前复权）。返回 DataFrame：日期/开盘/收盘/最高/最低/成交量。"""
+_PERIOD_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
+
+
+def kline(symbol, days=60, period="daily", use_cache=True):
+    """获取K线（前复权，支持 daily/weekly/monthly，带 1 小时缓存）。
+    返回 DataFrame：日期/开盘/收盘/最高/最低/成交量。"""
+    key = f"kline:{symbol}:{days}:{period}"
+    if use_cache:
+        cached = _cache_get(key, 3600)
+        if cached:
+            return pd.DataFrame(cached["rows"], columns=cached["cols"])
+    df = _kline_fetch(symbol, days, period)
+    _cache_set(key, {"cols": list(df.columns),
+                     "rows": df.astype(object).where(pd.notnull(df), None).values.tolist()})
+    return df
+
+
+def _kline_fetch(symbol, days=60, period="daily"):
     import json as _json
     import urllib.request
 
     import pandas as pd
     try:
         norm = _normalize_symbol(symbol)
-        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={norm},day,,,{days},qfq"
+        p = _PERIOD_MAP.get(period, "day")
+        url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={norm},{p},,,{days},qfq"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = _json.loads(resp.read().decode("utf-8", errors="replace"))
         node = data.get("data", {}).get(norm, {})
-        rows = node.get("qfqday") or node.get("day") or []
+        key_map = {"daily": ("qfqday", "day"),
+                   "weekly": ("qfqweek", "week"),
+                   "monthly": ("qfqmonth", "month")}
+        k1, k2 = key_map.get(period, ("qfqday", "day"))
+        rows = node.get(k1) or node.get(k2) or node.get("qfqday") or node.get("day") or []
         if not rows:
             raise ValueError(f"未获取到K线数据（{norm}）")
         df = pd.DataFrame([r[:6] for r in rows], columns=["日期", "开盘", "收盘", "最高", "最低", "成交量"])
@@ -151,10 +223,11 @@ def kline(symbol, days=60):
         return df
     except Exception as e:
         # 回退1：AkShare（东方财富，国内直连）
+        e2 = None
         try:
-            return _ak_kline(symbol, days)
-        except Exception as e2:
-            pass
+            return _ak_kline(symbol, days, period if period in ("daily", "weekly", "monthly") else "daily")
+        except Exception as ex:
+            e2 = ex
         # 回退2：海外标的回退 yfinance（需可访问 Yahoo）
         try:
             import yfinance as yf
@@ -172,6 +245,31 @@ def kline(symbol, days=60):
             raise ValueError(f"腾讯/AkShare K线均失败: {e} / {e2}（未安装 yfinance）") from e
         except Exception as e3:
             raise ValueError(f"腾讯/AkShare/yfinance K线均失败（{symbol}）: {e} / {e2} / {e3}") from e3
+
+
+def cross_check(symbol):
+    """多源交叉验证：腾讯 vs AkShare（东财）的现价与涨跌幅对比。"""
+    t = _fetch_tencent(_normalize_symbol(symbol))
+    a = _ak_quote(symbol)
+
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    t_price, a_price = num(t.get("现价")), num(a.get("现价"))
+    t_chg, a_chg = num(t.get("涨跌幅%")), num(a.get("涨跌幅%"))
+    rows = [
+        {"指标": "现价", "腾讯": t_price, "AkShare(东财)": a_price},
+        {"指标": "涨跌幅%", "腾讯": t_chg, "AkShare(东财)": a_chg},
+    ]
+    verdict = "✅ 两源一致"
+    if t_price and a_price and abs(t_price - a_price) / max(a_price, 1e-9) > 0.005:
+        verdict = "⚠️ 现价差异超过 0.5%，请核实数据源"
+    if t_chg is not None and a_chg is not None and abs(t_chg - a_chg) > 0.5:
+        verdict = "⚠️ 涨跌幅差异超过 0.5%，请核实数据源"
+    return rows, verdict
 
 
 def indicators(df):
@@ -205,6 +303,25 @@ def indicators(df):
     df["BOLL上"] = mid + 2 * std
     df["BOLL中"] = mid
     df["BOLL下"] = mid - 2 * std
+
+    # KDJ(9,3,3)
+    low9 = df["最低"].rolling(9).min()
+    high9 = df["最高"].rolling(9).max()
+    rsv = (close - low9) / (high9 - low9).replace(0, np.nan) * 100
+    df["K"] = rsv.ewm(com=2, adjust=False).mean()
+    df["D"] = df["K"].ewm(com=2, adjust=False).mean()
+    df["J"] = 3 * df["K"] - 2 * df["D"]
+
+    # OBV 能量潮
+    direction = np.sign(close.diff()).fillna(0)
+    df["OBV"] = (direction * df["成交量"]).cumsum()
+
+    # ATR(14) 平均真实波幅
+    prev_close = close.shift()
+    tr = pd.concat([df["最高"] - df["最低"],
+                    (df["最高"] - prev_close).abs(),
+                    (df["最低"] - prev_close).abs()], axis=1).max(axis=1)
+    df["ATR"] = tr.rolling(14).mean()
     return df
 
 

@@ -25,6 +25,7 @@ KNOWLEDGE_DIR = Path(__file__).parent / "knowledge"
 _client = None
 _collection = None
 _embedder = None
+_bm25 = None
 
 
 def _encrypt_enabled():
@@ -73,6 +74,40 @@ def _embed(texts):
     from chromadb.utils import embedding_functions
     ef = embedding_functions.ONNXMiniLM_L6_V2()
     return [ef([t])[0] for t in texts]
+
+
+def _tokenize(text):
+    """中文用 jieba 分词，英文/符号按空白拆分。"""
+    try:
+        import jieba
+        return list(jieba.cut(text))
+    except Exception:
+        return list(text.lower())
+
+
+def _get_bm25():
+    """构建 BM25 索引（文档为明文，自动解密加密片段）。"""
+    global _bm25
+    if _bm25 is None:
+        try:
+            from rank_bm25 import BM25Okapi
+        except ImportError:
+            _bm25 = False
+            return None
+        col = _get_collection()
+        data = col.get(include=["documents"])
+        ids, docs = (data.get("ids") or []), []
+        for i, d in enumerate(data.get("documents") or []):
+            plain = d
+            if isinstance(d, str) and d.startswith("enc:v1:"):
+                try:
+                    import crypto_utils
+                    plain = crypto_utils.decrypt_bytes(d.encode("ascii")).decode("utf-8")
+                except Exception:
+                    plain = ""
+            docs.append(plain or "")
+        _bm25 = {"model": BM25Okapi([_tokenize(x) for x in docs]), "ids": ids}
+    return _bm25
 
 
 def _extract_text(path):
@@ -168,18 +203,22 @@ def add_document(file_path):
         import crypto_utils
         docs = [crypto_utils.encrypt_bytes(c.encode("utf-8")).decode("ascii") for c in chunks]
     col.add(ids=ids, documents=docs, embeddings=_embed(chunks), metadatas=metas)
+    global _bm25
+    _bm25 = None  # 索引失效，重建
     return len(chunks)
 
 
-def query(query_text, top_k=5):
-    """检索最相关的知识库片段，返回 [{来源, 距离, 内容}]。"""
+def query(query_text, top_k=5, hybrid=True):
+    """检索最相关的知识库片段；hybrid=True 时使用 向量+BM25 混合检索。
+    返回 [{来源, 距离, 内容, 综合分?}]。"""
     col = _get_collection()
     total = col.count()
     if total == 0:
         return []
-    k = max(1, min(top_k, total))
+    k = max(1, min(top_k * 3 if hybrid else top_k, total))
     res = col.query(query_embeddings=_embed([query_text]), n_results=k,
                     include=["documents", "metadatas", "distances"])
+    ids = res.get("ids", [[]])[0]
     out = []
     for i, doc in enumerate(res["documents"][0]):
         meta = res["metadatas"][0][i] or {}
@@ -189,12 +228,29 @@ def query(query_text, top_k=5):
                 doc = crypto_utils.decrypt_bytes(doc.encode("ascii")).decode("utf-8")
             except Exception:
                 doc = "[加密内容无法解密]"
+        rid = ids[i] if i < len(ids) else ""
         out.append({
+            "id": rid,
             "来源": meta.get("source", "未知"),
             "距离": round(float(res["distances"][0][i]), 4),
             "内容": doc,
         })
-    return out
+    if not hybrid:
+        return out[:top_k]
+
+    bm = _get_bm25()
+    if not bm:
+        return out[:top_k]
+    scores = bm["model"].get_scores(_tokenize(query_text))
+    max_s = float(scores.max()) if scores.size else 0.0
+    id_score = {}
+    for j, rid in enumerate(bm["ids"]):
+        id_score[rid] = float(scores[j]) / max_s if max_s else 0.0
+    for item in out:
+        sim = 1 / (1 + item["距离"])
+        item["综合分"] = round(0.6 * sim + 0.4 * id_score.get(item["id"], 0.0), 4)
+    out.sort(key=lambda x: -x["综合分"])
+    return out[:top_k]
 
 
 def status():
@@ -217,6 +273,8 @@ def remove_document(file_path):
     ids = old.get("ids", []) or []
     if ids:
         col.delete(ids=ids)
+    global _bm25
+    _bm25 = None
     return len(ids)
 
 
@@ -227,6 +285,8 @@ def clear():
     ids = data.get("ids", []) or []
     if ids:
         col.delete(ids=ids)
+    global _bm25
+    _bm25 = None
     return len(ids)
 
 
