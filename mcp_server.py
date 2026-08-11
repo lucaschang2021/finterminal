@@ -1293,6 +1293,7 @@ def _parse_file_index(query: str):
         r'选\s*(\d+)\s*个',
         r'(\d+)\s*号\s*文件',
         r'文件\s*(\d+)',
+        r'^\s*(\d+)\s*$',  # 整句就是数字（如 "1"），与行情歧义选择的裸数字风格保持一致
     )
     for pattern in patterns:
         match = re.search(pattern, query)

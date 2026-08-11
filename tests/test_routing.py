@@ -67,3 +67,13 @@ def test_corrupt_session_fallback(tmp_path, monkeypatch):
 def test_detect_none():
     import mcp_server as m
     assert "请提供 path" in m.detect(None)
+
+
+def test_parse_file_index_bare_digit():
+    """文件选择支持裸数字（与行情歧义选择的风格一致），且不误伤其它数字。"""
+    assert m._parse_file_index("1") == 0
+    assert m._parse_file_index(" 2 ") == 1
+    assert m._parse_file_index("第3个") == 2
+    assert m._parse_file_index("文件4") == 3
+    assert m._parse_file_index("2026年数据") is None
+    assert m._parse_file_index("画折线图") is None
