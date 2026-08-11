@@ -49,6 +49,8 @@ export const api = {
     request<ApiResult<{ columns: string[]; numeric: string[] }>>(`/columns?path=${encodeURIComponent(path)}`),
   plotData: (params: Record<string, string>) =>
     request<ApiResult<{ chart_type: string; option: Record<string, unknown> }>>(`/plot/data?${new URLSearchParams(params)}`),
+  plotSave: (params: Record<string, string>) =>
+    request<ApiResult>(`/plot/save?${new URLSearchParams(params)}`),
   clean: (body: Record<string, unknown>) =>
     request<ApiResult>('/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   analyze: (body: Record<string, unknown>) =>
@@ -71,4 +73,34 @@ export const api = {
 /** 构造 charts/ 静态文件地址（PNG/HTML） */
 export function fileUrl(name: string): string {
   return `${apiBase}/file?path=${encodeURIComponent(name)}`
+}
+
+/** SSE 流式对话：POST /ask/stream，按 delta 回调追加文本 */
+export async function streamAsk(query: string, onDelta: (delta: string) => void): Promise<void> {
+  const res = await fetch(`${apiBase}/ask/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  })
+  if (!res.ok || !res.body) throw new Error(`流式请求失败 (${res.status})`)
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const frames = buf.split('\n\n')
+    buf = frames.pop() ?? ''
+    for (const frame of frames) {
+      if (!frame.startsWith('data: ')) continue
+      const payload = frame.slice(6).trim()
+      if (payload === '[DONE]') return
+      try {
+        const obj = JSON.parse(payload) as { delta?: string; done?: boolean }
+        if (obj.done) return
+        if (obj.delta) onDelta(obj.delta)
+      } catch { /* 忽略非 JSON 帧 */ }
+    }
+  }
 }

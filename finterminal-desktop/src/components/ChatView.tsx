@@ -1,11 +1,9 @@
-import { Send, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { api } from '@/api'
-import type { ChatMessage } from '@/types'
+import { streamAsk } from '@/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
+import type { ChatMessage } from '@/types'
 import Markdown from './Markdown'
 
 const SUGGESTIONS = [
@@ -30,13 +28,18 @@ export default function ChatView() {
     const q = (raw ?? input).trim()
     if (!q || busy) return
     setInput('')
-    setMessages((m) => [...m, { role: 'user', text: q, time: Date.now() }])
+    const id = Date.now()
+    setMessages((m) => [...m, { role: 'user', text: q, time: id }])
+    setMessages((m) => [...m, { role: 'assistant', text: '', time: id + 1 }])
     setBusy(true)
     try {
-      const r = await api.ask(q)
-      setMessages((m) => [...m, { role: 'assistant', text: r.text ?? '', time: Date.now() }])
+      let acc = ''
+      await streamAsk(q, (delta) => {
+        acc += delta
+        setMessages((m) => m.map((msg, i) => (i === m.length - 1 ? { ...msg, text: acc } : msg)))
+      })
     } catch (e) {
-      setMessages((m) => [...m, { role: 'assistant', text: `❌ ${(e as Error).message}`, time: Date.now() }])
+      setMessages((m) => m.map((msg, i) => (i === m.length - 1 ? { ...msg, text: `❌ ${(e as Error).message}` } : msg)))
     } finally {
       setBusy(false)
     }
@@ -44,23 +47,23 @@ export default function ChatView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <h2 className="text-sm font-semibold">FinTerminal 对话</h2>
-        <span className="text-xs text-muted-foreground">读文件 · 画图 · 分析 · 行情 · 研报</span>
+      <header className="flex items-center gap-2 border-b px-5 py-3" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <span className="text-sm font-semibold">FinTerminal 对话</span>
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>流式输出 · 本地金融数据终端</span>
       </header>
 
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto max-w-3xl px-5 py-5">
           {messages.length === 0 && (
-            <div className="mb-8 rounded-xl border border-border bg-card/60 p-5">
-              <div className="mb-3 text-base font-medium">试试这样问：</div>
+            <div className="liquid-glass mb-8 rounded-2xl p-5" style={{ borderRadius: 18 }}>
+              <div className="mb-3 text-sm font-medium">试试这样问：</div>
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     onClick={() => send(s)}
-                    className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:text-[var(--accent)]"
+                    style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--muted)' }}
                   >
                     {s}
                   </button>
@@ -69,46 +72,61 @@ export default function ChatView() {
             </div>
           )}
           {messages.map((m, i) => (
-            <div key={i} className={m.role === 'user' ? 'mb-5 flex justify-end' : 'mb-5'}>
+            <div key={m.time} className={m.role === 'user' ? 'mb-5 flex justify-end' : 'mb-5'}>
               <div
                 className={
                   m.role === 'user'
-                    ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground'
-                    : 'max-w-[95%] rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3'
+                    ? 'glass-bubble-user max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm'
+                    : 'glass-bubble-ai max-w-[95%] rounded-2xl rounded-bl-sm px-4 py-3'
                 }
+                style={{ border: '0.5px solid rgba(255,255,255,0.05)' }}
               >
-                {m.role === 'user' ? m.text : <Markdown text={m.text} />}
+                {m.role === 'user' ? m.text : (
+                  <>
+                    {m.text ? <Markdown text={m.text} /> : <span style={{ color: 'var(--muted)' }}>思考中…</span>}
+                    {m.text && (
+                      <div className="source-tag mt-2 border-t pt-1.5" style={{ borderColor: 'rgba(201,168,76,0.18)' }}>
+                        📌 FinTerminal · 数据来源已标注 · AI 结论请人工复核
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           ))}
-          {busy && (
-            <div className="mb-5 max-w-[95%] rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-              思考中…
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border p-4">
-        <div className="mx-auto flex max-w-3xl gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-            placeholder="输入指令，Enter 发送，Shift+Enter 换行"
-            className="min-h-[44px] max-h-32 resize-none"
-            disabled={busy}
-          />
-          <Button onClick={() => send()} disabled={busy} className="h-[44px] px-5">
-            <Send className="h-4 w-4" />
-            {busy ? '思考中' : '发送'}
-          </Button>
+      {/* 打字框：五彩流光在磨砂玻璃下涌动 */}
+      <div className="border-t p-4" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="composer-wrap relative mx-auto max-w-3xl overflow-hidden rounded-2xl" style={{ borderRadius: 18 }}>
+          <div className="composer-flow" />
+          <div
+            className="relative"
+            style={{ background: 'rgba(22,27,34,0.55)', backdropFilter: 'blur(16px) saturate(1.3)', WebkitBackdropFilter: 'blur(16px) saturate(1.3)' }}
+          >
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              placeholder="输入指令，Enter 发送，Ctrl+Enter 换行"
+              rows={2}
+              disabled={busy}
+              className="w-full resize-none bg-transparent px-4 py-3 text-sm outline-none placeholder:text-[var(--muted)]"
+              style={{ color: 'var(--fg)' }}
+            />
+            <div className="flex items-center justify-end px-3 pb-2">
+              <Button size="sm" onClick={() => send()} disabled={busy} className="glow-btn h-8">
+                {busy ? '生成中…' : '发送'}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

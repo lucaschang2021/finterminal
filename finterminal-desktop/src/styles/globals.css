@@ -2,29 +2,201 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground antialiased;
-    font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
-  }
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: hsl(214 20% 25%);
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
+:root {
+  --bg: #0A0E14;
+  --bg-deep: #070A0F;
+  --fg: #EAEDF2;
+  --muted: #7A8290;
+  --accent: #5B9BFF;
+  --accent2: #C9A84C;
+  --up: #E68A4A;
+  --down: #E05A5A;
+  --glass-bg: rgba(22, 27, 34, 0.45);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --card-bg: rgba(22, 27, 34, 0.55);
+  --flow-speed: 16s;
+  --flow-strength: 8%;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+code, pre, .mono {
+  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ===== 液态玻璃核心 ===== */
+.liquid-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 0.5px solid var(--glass-border);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.glass-menu {
+  background: rgba(22, 27, 34, 0.50);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+
+.glass-board {
+  background: rgba(22, 27, 34, 0.50);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.glass-panel {
+  background: rgba(22, 27, 34, 0.60);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+}
+
+.glass-bubble-user {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  backdrop-filter: blur(12px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+}
+
+.glass-bubble-ai {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 0.5px solid var(--glass-border);
+}
+
+/* ===== 五彩流光暗流（背景动画层） ===== */
+.flow-current {
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 40% 35% at 18% 32%, color-mix(in srgb, var(--accent) calc(var(--flow-strength) * 3.2), transparent) 0%, transparent 60%),
+    radial-gradient(ellipse 35% 30% at 72% 68%, color-mix(in srgb, var(--accent2) calc(var(--flow-strength) * 2.8), transparent) 0%, transparent 58%),
+    radial-gradient(ellipse 30% 28% at 55% 22%, color-mix(in srgb, #3FB950 calc(var(--flow-strength) * 2.2), transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 32% 30% at 82% 20%, color-mix(in srgb, #E68A4A calc(var(--flow-strength) * 2.0), transparent) 0%, transparent 55%),
+    radial-gradient(ellipse 28% 30% at 28% 74%, color-mix(in srgb, #8957E5 calc(var(--flow-strength) * 2.4), transparent) 0%, transparent 56%);
+  animation: flow-drift var(--flow-speed) linear infinite;
+}
+
+.flow-current.gold {
+  background:
+    radial-gradient(ellipse 40% 32% at 30% 40%, color-mix(in srgb, var(--accent2) calc(var(--flow-strength) * 2.8), transparent) 0%, transparent 58%),
+    radial-gradient(ellipse 32% 28% at 70% 65%, color-mix(in srgb, var(--accent2) calc(var(--flow-strength) * 2.2), transparent) 0%, transparent 55%);
+}
+
+.flow-current.blue-gold {
+  background:
+    radial-gradient(ellipse 38% 30% at 22% 30%, color-mix(in srgb, var(--accent) calc(var(--flow-strength) * 2.8), transparent) 0%, transparent 58%),
+    radial-gradient(ellipse 36% 30% at 74% 62%, color-mix(in srgb, var(--accent2) calc(var(--flow-strength) * 2.4), transparent) 0%, transparent 56%);
+}
+
+@keyframes flow-drift {
+  0%   { transform: translate3d(-3%, -2%, 0) rotate(0deg); }
+  25%  { transform: translate3d(2%, 3%, 0) rotate(2deg); }
+  50%  { transform: translate3d(3%, -2%, 0) rotate(0deg); }
+  75%  { transform: translate3d(-2%, 2%, 0) rotate(-2deg); }
+  100% { transform: translate3d(-3%, -2%, 0) rotate(0deg); }
+}
+
+/* 打字框底部流光 */
+.composer-flow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  background:
+    linear-gradient(90deg, transparent, var(--accent), var(--accent2), #3FB950, #E68A4A, #8957E5, transparent);
+  background-size: 300% 100%;
+  animation: composer-flow-anim 8s linear infinite;
+}
+.composer-flow:focus-within ~ .composer-flow,
+.composer-wrap:focus-within .composer-flow {
+  animation-duration: 5s;
+  opacity: 0.25;
+}
+
+@keyframes composer-flow-anim {
+  0% { background-position: 0% 0; }
+  100% { background-position: 300% 0; }
+}
+
+/* 按钮悬停发光 */
+.glow-btn {
+  transition: box-shadow 0.3s ease, transform 0.15s ease, background 0.3s ease;
+}
+.glow-btn:hover {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 55%, transparent);
+  transform: translateY(-1px);
+}
+
+/* 主题切换过渡 */
+.theme-fade {
+  transition: background 0.5s ease, color 0.5s ease;
+}
+
+/* 文字来源标签 */
+.source-tag {
+  color: var(--accent2);
+  font-size: 11px;
+}
+
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+/* shadcn 变量映射（兼容既有组件） */
+:root {
+  --background: 216 28% 7%;
+  --foreground: 220 20% 95%;
+  --border: 214 20% 18%;
+  --input: 214 20% 18%;
+  --ring: 212 100% 65%;
+  --primary: 212 100% 65%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 20% 18%;
+  --secondary-foreground: 220 20% 90%;
+  --muted: 214 18% 14%;
+  --muted-foreground: 215 10% 60%;
+  --accent-color: 214 18% 18%;
+  --accent-foreground: 220 20% 95%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --card: 216 24% 10%;
+  --card-foreground: 220 20% 95%;
+  --popover: 216 24% 12%;
+  --popover-foreground: 220 20% 95%;
 }

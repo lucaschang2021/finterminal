@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 import mcp_server as m
@@ -203,6 +203,31 @@ def ask(req: AskReq):
         return _ok(text=m.ask(req.query))
     except Exception as e:
         return _err(e)
+
+
+def _chunk_text(text: str, size: int = 14):
+    """按字符切块（模拟流式输出）"""
+    for i in range(0, len(text), size):
+        yield text[i:i + size]
+
+
+@app.post("/api/ask/stream")
+def ask_stream(req: AskReq):
+    """SSE 流式对话：先执行完整 ask，再按块推送（打字机效果）。"""
+    import json
+
+    def gen():
+        try:
+            result = m.ask(req.query)
+        except Exception as e:
+            yield f"data: {json.dumps({'delta': f'❌ {e}', 'done': True}, ensure_ascii=False)}\n\n"
+            return
+        for chunk in _chunk_text(result or ''):
+            yield f"data: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'delta': '', 'done': True}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 class KbReq(BaseModel):

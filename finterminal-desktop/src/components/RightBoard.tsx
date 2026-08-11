@@ -1,24 +1,25 @@
-import { BookOpen, LineChart, Network, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { api } from '@/api'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
-function PanelCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Panel({ title, icon, loading, children }: {
+  title: string
+  icon: string
+  loading?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          {icon}
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <div className="liquid-glass rounded-xl p-3" style={{ borderRadius: 14 }}>
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+        <span>{icon}</span>
+        <span>{title}</span>
+        {loading && <span className="ml-auto h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />}
+      </div>
+      {children}
+    </div>
   )
 }
 
@@ -27,18 +28,15 @@ export default function RightBoard() {
   const [quote, setQuote] = useState('')
   const [chain, setChain] = useState('')
   const [kb, setKb] = useState('')
-  const [err, setErr] = useState('')
+  const [ready, setReady] = useState(false)
+  const [loading, setLoading] = useState(false)
 
   const loadQuote = () => {
-    setErr('')
-    api.readApi(code).then((r) => setQuote(r.text ?? '')).catch((e) => setErr((e as Error).message))
+    setLoading(true)
+    api.readApi(code).then((r) => setQuote(r.text ?? '')).catch(() => setQuote('行情获取失败（可能离线）')).finally(() => setLoading(false))
   }
-  const loadChain = () => {
-    api.chain({ action: 'status' }).then((r) => setChain(r.text ?? '')).catch(() => {})
-  }
-  const loadKb = () => {
-    api.knowledge({ action: 'status' }).then((r) => setKb(r.text ?? '')).catch(() => {})
-  }
+  const loadChain = () => api.chain({ action: 'status' }).then((r) => setChain(r.text ?? '')).catch(() => setChain('数据链读取失败'))
+  const loadKb = () => api.knowledge({ action: 'status' }).then((r) => setKb(r.text ?? '')).catch(() => setKb('知识库读取失败'))
 
   useEffect(() => {
     loadQuote()
@@ -48,40 +46,44 @@ export default function RightBoard() {
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    if (quote || chain || kb) {
+      const t = setTimeout(() => setReady(true), 120)
+      return () => clearTimeout(t)
+    }
+  }, [quote, chain, kb])
+
   return (
-    <aside className="w-80 shrink-0 border-l border-border bg-card/40 p-3">
-      <ScrollArea className="h-full">
+    <aside
+      className="relative h-full w-[280px] shrink-0 overflow-hidden border-l p-3 transition-all duration-600"
+      style={{
+        borderColor: 'rgba(255,255,255,0.05)',
+        background: ready ? 'rgba(22,27,34,0.50)' : 'transparent',
+        backdropFilter: ready ? 'blur(20px) saturate(1.4)' : 'none',
+        WebkitBackdropFilter: ready ? 'blur(20px) saturate(1.4)' : 'none',
+        opacity: ready ? 1 : 0.4,
+      }}
+    >
+      <div className="flow-current gold" style={{ '--flow-strength': '6%' } as React.CSSProperties} />
+      <ScrollArea className="relative h-full">
         <div className="space-y-3">
-          <PanelCard title="实时行情" icon={<LineChart className="h-4 w-4 text-primary" />}>
+          <Panel title="实时行情" icon="📈" loading={loading}>
             <div className="flex gap-2">
-              <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="股票代码" className="h-8 text-xs" />
-              <Button size="sm" variant="secondary" onClick={loadQuote} className="h-8">
-                <RefreshCw className="h-3 w-3" />
-              </Button>
+              <Input value={code} onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && loadQuote()}
+                placeholder="股票代码" className="glass-input h-7 border-0 text-[11px]" />
+              <Button size="sm" variant="secondary" onClick={loadQuote} className="h-7 px-2 text-[11px]">查询</Button>
             </div>
-            {err && <p className="mt-2 text-xs text-destructive">{err}</p>}
-            {quote && <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-2 text-[11px] leading-relaxed text-foreground/85">{quote}</pre>}
-          </PanelCard>
+            {quote && <pre className="mono mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{quote}</pre>}
+          </Panel>
 
-          <PanelCard title="数据链状态" icon={<Network className="h-4 w-4 text-primary" />}>
-            <div className="flex items-center justify-between">
-              <Badge variant="success">{chain.includes('✅') ? '完整' : '查看'}</Badge>
-              <Button size="sm" variant="ghost" onClick={loadChain} className="h-6 px-2">
-                <RefreshCw className="h-3 w-3" />
-              </Button>
-            </div>
-            {chain && <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-2 text-[11px] leading-relaxed text-foreground/85">{chain}</pre>}
-          </PanelCard>
+          <Panel title="数据链状态" icon="⛓️">
+            {chain && <pre className="mono mt-1 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{chain}</pre>}
+          </Panel>
 
-          <PanelCard title="知识库状态" icon={<BookOpen className="h-4 w-4 text-primary" />}>
-            <div className="flex items-center justify-between">
-              <Badge variant="secondary">RAG</Badge>
-              <Button size="sm" variant="ghost" onClick={loadKb} className="h-6 px-2">
-                <RefreshCw className="h-3 w-3" />
-              </Button>
-            </div>
-            {kb && <pre className="mt-2 whitespace-pre-wrap rounded bg-background p-2 text-[11px] leading-relaxed text-foreground/85">{kb}</pre>}
-          </PanelCard>
+          <Panel title="知识库状态" icon="🧠">
+            {kb && <pre className="mono mt-1 max-h-44 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed" style={{ color: 'var(--muted)' }}>{kb}</pre>}
+          </Panel>
         </div>
       </ScrollArea>
     </aside>
