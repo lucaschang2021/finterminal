@@ -54,3 +54,46 @@ def test_encrypted_fallback(tmp_path, monkeypatch):
     finally:
         os.environ.pop("FIN_SNAP_ENCRYPT", None)
         shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+
+
+def test_corrupt_ledger_not_silently_reset(tmp_path):
+    """账本损坏时：备份原文件、中止写入，绝不静默重建空链。"""
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+    p = str(tmp_path / "corrupt.csv")
+    _write(p, "x\n1\n")
+    r1 = dc.record_if_changed(p)
+    assert r1 and r1["action"] == "created"
+    valid_ledger = dc.LEDGER_FILE.read_text(encoding="utf-8")
+
+    # 模拟账本被写坏
+    with open(dc.LEDGER_FILE, "w", encoding="utf-8") as f:
+        f.write("{broken json")
+
+    # 再次记录：应中止且不覆盖
+    _write(p, "x\n2\n")
+    assert dc.record_if_changed(p) is None
+    # 原文件已被备份，账本目录里出现 .corrupt-* 备份
+    backups = [x for x in dc.CHAIN_DIR.glob("ledger.corrupt-*.json")]
+    assert backups, "损坏账本应被备份而非直接丢弃"
+    # 损坏原件必须留在原位持续阻断，而不是被移走/重建
+    assert dc.LEDGER_FILE.exists()
+    assert "账本文件损坏" in dc.status()
+    assert "账本文件损坏" in dc.verify(quick=True)
+    assert "账本文件损坏" in dc.history()
+
+    # 修复（还原有效账本）后，链仍完整可用
+    dc.LEDGER_FILE.write_text(valid_ledger, encoding="utf-8")
+    assert "✅" in dc.verify(quick=True)
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+
+
+def test_corrupt_tracked_backed_up(tmp_path):
+    """辅助元数据损坏时同样先备份，不静默丢失。"""
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+    dc.CHAIN_DIR.mkdir(parents=True, exist_ok=True)
+    with open(dc.TRACK_FILE, "w", encoding="utf-8") as f:
+        f.write("not-json")
+    assert "已加入跟踪" in dc.track(str(tmp_path / "t.csv"))
+    backups = [x for x in dc.CHAIN_DIR.glob("tracked.corrupt-*.json")]
+    assert backups
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)

@@ -105,26 +105,63 @@ def _canonical(path: str) -> str:
     return os.path.normcase(os.path.abspath(os.path.normpath(path)))
 
 
+def _backup_corrupt(path, move=False):
+    """把损坏的 JSON 文件原样备份为 .corrupt-<时间戳>，尽力而为（不抛异常）。
+    move=True 时移走原件（用于可重建的辅助元数据）；
+    move=False 时复制一份（用于账本：原件必须保留，持续阻断写入直到修复）。"""
+    ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    backup = path.with_name(f"{path.stem}.corrupt-{ts}{path.suffix}")
+    try:
+        if move:
+            os.replace(path, backup)
+        else:
+            shutil.copy2(path, backup)
+        return backup
+    except Exception:
+        return None
+
+
 def _load_json(path, default):
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
-            return default
+            # 备份损坏文件，避免后续覆盖导致元数据不可恢复
+            _backup_corrupt(path)
     return default
 
 
 def _save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    # 原子写入：先写临时文件再替换，避免进程崩溃留下半截 JSON
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 def _load_ledger():
-    ledger = _load_json(LEDGER_FILE, {"records": []})
-    if not isinstance(ledger.get("records"), list):
-        ledger["records"] = []
+    """读取账本。账本损坏时绝不静默重置：备份原文件并抛错，调用方中止写入。"""
+    if os.path.exists(LEDGER_FILE):
+        try:
+            with open(LEDGER_FILE, encoding="utf-8") as f:
+                ledger = json.load(f)
+        except Exception as e:
+            backup = _backup_corrupt(LEDGER_FILE)
+            note = f"（已备份到 {backup}）" if backup else "（备份失败）"
+            raise ValueError(
+                f"账本文件损坏：{LEDGER_FILE}{note}。为防止覆盖历史链，本次操作已中止；"
+                f"请检查备份文件或修复 JSON 后重试。原始错误：{e!s}"
+            ) from e
+        if not isinstance(ledger, dict) or not isinstance(ledger.get("records"), list):
+            backup = _backup_corrupt(LEDGER_FILE)
+            note = f"（已备份到 {backup}）" if backup else "（备份失败）"
+            raise ValueError(
+                f"账本结构无效：{LEDGER_FILE}{note}。为防止覆盖历史链，本次操作已中止。"
+            )
+    else:
+        ledger = {"records": []}
     if "genesis_hash" not in ledger:
         ledger["genesis_hash"] = GENESIS_HASH
     return ledger
@@ -522,6 +559,10 @@ def snapshot(path=None, recursive=True):
         recursive: 目录是否递归扫描。
     返回: 操作摘要文本。
     """
+    try:
+        _load_ledger()  # 提前校验账本：损坏时给出明确提示，而不是误报“无变化”
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     paths = [path] if path else _load_tracked().get("paths", [])
     files = []
     for p in paths:
@@ -555,7 +596,10 @@ def snapshot(path=None, recursive=True):
 
 def history(file_path=None):
     """查询数据链历史记录；可按文件路径筛选（支持子串匹配）。"""
-    ledger = _load_ledger()
+    try:
+        ledger = _load_ledger()
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     records = ledger["records"]
     if file_path:
         key = _canonical(file_path)
@@ -572,7 +616,10 @@ def history(file_path=None):
 
 def show(record_id):
     """查看某条记录的详细信息（具体改了什么、哈希、快照位置）。"""
-    ledger = _load_ledger()
+    try:
+        ledger = _load_ledger()
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     for rec in ledger["records"]:
         if rec["id"] == record_id or str(rec.get("index")) == record_id:
             return _format_record(rec)
@@ -636,7 +683,10 @@ def _format_record(rec):
 
 def anchor(service_url="https://freetsa.org/tsr"):
     """把链头哈希交给 RFC3161 可信时间戳服务公证，形成可第三方验证的时间锚点。"""
-    ledger = _load_ledger()
+    try:
+        ledger = _load_ledger()
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     records = ledger.get("records", [])
     if not records:
         return "数据链为空，无可锚定内容"
@@ -677,7 +727,10 @@ def cleanup(keep_versions=10, max_age_days=None, archive=True, file_path=None):
     verify 会按登记校验归档快照或跳过已删除快照，不会误报。
     """
     with _CHAIN_LOCK:
-        return _cleanup_impl(keep_versions, max_age_days=max_age_days, archive=archive, file_path=file_path)
+        try:
+            return _cleanup_impl(keep_versions, max_age_days=max_age_days, archive=archive, file_path=file_path)
+        except Exception as e:
+            return f"⚠️ 数据链清理失败：{e}"
 
 
 def _cleanup_impl(keep_versions, max_age_days, archive, file_path):
@@ -769,7 +822,10 @@ def verify(check_live=True, quick=False):
     quick=True：只做链结构校验（快、不读快照文件、不查磁盘），
     用于日常快速自检；完整校验请用默认模式。
     """
-    ledger = _load_ledger()
+    try:
+        ledger = _load_ledger()
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     cleanup_data = _load_cleanup()
     records = ledger["records"]
     issues = []
@@ -865,7 +921,10 @@ def verify(check_live=True, quick=False):
 
 def status():
     """数据链整体状态：记录总数、链头哈希、快照/归档/清理统计、跟踪路径。"""
-    ledger = _load_ledger()
+    try:
+        ledger = _load_ledger()
+    except Exception as e:
+        return f"⚠️ 数据链读取失败：{e}"
     records = ledger["records"]
     tracked = _load_tracked().get("paths", [])
     cleanup_data = _load_cleanup()

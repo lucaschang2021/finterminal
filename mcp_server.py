@@ -148,8 +148,12 @@ def load_session():
         }
 
 def save_session(data):
-    with _SESSION_LOCK, open(SESSION_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with _SESSION_LOCK:
+        # 原子写入：先写临时文件再替换，避免崩溃留下半截 JSON 导致会话状态丢失
+        tmp = SESSION_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, SESSION_FILE)
 
 
 # ==================== Phase 1: 文件读取 ====================
