@@ -553,6 +553,10 @@ def build_figure(chart_type, df, x_column=None, y_column=None, y_columns=None, v
     handler = HANDLERS.get(chart_type)
     if handler is None:
         raise ValueError(f"不支持的图表类型: {chart_type}，可用类型: {', '.join(supported_types())}")
+    # 大数据降采样：折线/散点/面积/步进/气泡/误差条 超过 5 万点时按比例抽样，保证渲染性能
+    if chart_type in ("line", "scatter", "area", "step", "errorbar", "bubble") and len(df) > 50000:
+        step = len(df) // 50000
+        df = df.iloc[::step].reset_index(drop=True)
     y_cols = [c.strip() for c in (y_columns or "").split(",") if c.strip()]
     params = {
         "x": x_column, "y": y_column, "y_cols": y_cols, "value": value_column,

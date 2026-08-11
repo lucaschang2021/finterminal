@@ -10,6 +10,7 @@
 
 import hashlib
 import json
+import os
 import re
 import time
 import warnings
@@ -62,7 +63,10 @@ def _cache_set(key, data):
     try:
         p = CACHE_DIR / (hashlib.md5(key.encode()).hexdigest() + ".json")
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(data, ensure_ascii=False, default=_json_default), encoding="utf-8")
+        # 原子写入：先写临时文件再替换，避免并发读到的撕裂内容
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, default=_json_default), encoding="utf-8")
+        os.replace(tmp, p)
     except Exception:
         pass
 
@@ -419,15 +423,14 @@ def forecast_model(series, horizon=10, model="auto"):
         warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive")
         warnings.filterwarnings("ignore", message="Setting the shape on a NumPy array")
         best = None
-        for p in range(0, 3):
-            for d in range(0, 2):
-                for q in range(0, 3):
-                    try:
-                        fit = ARIMA(y, order=(p, d, q)).fit()
-                        if best is None or fit.aic < best[0]:
-                            best = (fit.aic, fit)
-                    except Exception:
-                        continue
+        # 精选阶数网格：覆盖常用 AR/MA/差分组合，避免 18 次全网格拟合的延迟
+        for order in ((1, 1, 1), (2, 1, 0), (1, 1, 0), (0, 1, 1), (2, 1, 1)):
+            try:
+                fit = ARIMA(y, order=order).fit()
+                if best is None or fit.aic < best[0]:
+                    best = (fit.aic, fit)
+            except Exception:
+                continue
         if best is None:
             raise ValueError("ARIMA 拟合失败")
         aic, fit = best
