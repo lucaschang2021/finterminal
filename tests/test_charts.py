@@ -51,3 +51,21 @@ def test_missing_column_error():
 def test_unknown_type_error():
     with pytest.raises(ValueError, match="不支持的图表类型"):
         charts.build_figure("nope", _df())
+
+
+def test_save_chart_generates_interactive_html(tmp_path, monkeypatch):
+    """plot 保存时同时输出 PNG 与交互式 HTML（plotly 可用时）。"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import mcp_server as m
+
+    monkeypatch.setattr(m, "CHART_DIR", tmp_path)
+    fig = charts.build_figure("line", _df(), x_column="x", y_column="y")
+    result = m._save_chart(fig, "line")
+    assert "交互图表" in result, result
+    pngs = list(tmp_path.glob("*.png"))
+    htmls = list(tmp_path.glob("*.html"))
+    assert len(pngs) == 1 and len(htmls) == 1
+    content = htmls[0].read_text(encoding="utf-8")
+    assert "<html>" in content and "plotly" in content

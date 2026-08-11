@@ -110,6 +110,12 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DESKTOP_DIR = config.get("desktop_dir") or os.path.join(os.path.expanduser("~"), "Desktop")
 MAX_TOOL_ROUNDS = 4  # 单次 ask 最多执行的工具调用轮数（防止无限循环）
 
+# AI 生成内容的统一风险提示：所有 AI 结论出口必须附带，提醒人工复核
+AI_DISCLAIMER = (
+    "\n\n⚠️ 风险提示：以上结论由 AI 生成，仅供研究参考，不构成投资建议。"
+    "模型可能错误解读数据，请人工复核关键数据与逻辑后再做决策。"
+)
+
 mcp = FastMCP("FinTerminal")
 
 # Session 读写锁：防止并发对话时 session.json 读写竞争
@@ -791,7 +797,7 @@ def _ai_report_comment(summary_text):
             ],
             max_tokens=800,
         )
-        return (resp.choices[0].message.content or "").strip()
+        return (resp.choices[0].message.content or "").strip() + AI_DISCLAIMER
     except Exception as e:
         return f"（AI 解读暂时不可用: {e}）"
 
@@ -1069,8 +1075,23 @@ def _save_chart(fig, chart_type: str):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f")
     save_path = CHART_DIR / f"{chart_type}_{timestamp}.png"
     fig.savefig(save_path, dpi=150)
+    html_note = ""
+    try:
+        # 交互式 HTML（plotly 内嵌 JS，双击即可离线交互；转换失败自动降级为仅 PNG）
+        import warnings
+
+        import plotly.tools as ptools
+        with warnings.catch_warnings():
+            # 静默 plotly matplotlylib 的 Matplotlib 弃用警告（第三方内部实现）
+            warnings.simplefilter("ignore", DeprecationWarning)
+            pfig = ptools.mpl_to_plotly(fig)
+        html_path = CHART_DIR / f"{chart_type}_{timestamp}.html"
+        pfig.write_html(str(html_path), include_plotlyjs=True)
+        html_note = f"\n交互图表: {html_path}"
+    except Exception:
+        pass
     plt.close(fig)
-    return str(save_path)
+    return f"{save_path}{html_note}"
 
 
 def _detect_csv_encoding(file_path: str):
@@ -1559,7 +1580,8 @@ def ask(query: str):
             message = response.choices[0].message
 
             if not getattr(message, "tool_calls", None):
-                return message.content or "完成"
+                content = message.content or ""
+                return content + AI_DISCLAIMER if content.strip() else "完成"
 
             # 记录本轮助手请求的工具调用
             assistant_tool_calls = []
@@ -1703,8 +1725,8 @@ def _vision_analyze(file_path):
                 ]}],
                 max_tokens=1200,
             )
-            out = resp.choices[0].message.content or ""
-            return f"🖼️ 图片解析（视觉模型 {vmodel}）: {file_path}\n\n{out}"
+            out = (resp.choices[0].message.content or "").strip()
+            return f"🖼️ 图片解析（视觉模型 {vmodel}）: {file_path}\n\n{out}{AI_DISCLAIMER}"
         except Exception as e:
             return f"❌ 视觉模型调用失败（{vmodel}）: {e}"
     # 回退：OCR
@@ -1782,7 +1804,7 @@ def knowledge_fusion(query_text, symbol=None, top_k=3, use_local=False):
             session = load_session()
             session["last_market_symbol"] = symbol
             save_session(session)
-        return out
+        return out + AI_DISCLAIMER
     except Exception as e:
         return f"❌ 融合分析失败: {e}"
 
@@ -1869,52 +1891,86 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
             q = {}
             quote_txt = f"（行情获取失败: {e}）"
 
-        kdf = market_data.kline(symbol, 120)
-        ind = market_data.indicators(kdf)
-        last = ind.iloc[-1]
-        tech_txt = (f"MA5={last['MA5']:.2f} MA20={last['MA20']:.2f} MA60={last['MA60']:.2f} "
-                    f"MACD={last['MACD']:.3f} RSI={last['RSI']:.1f} "
-                    f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
+        # 逐章节降级：行情/K线/趋势/预测各自失败时跳过并标注，离线也能基于知识库出报告
+        kdf = ind = None
+        tech_txt = None
+        tech_err = ""
+        try:
+            kdf = market_data.kline(symbol, 120)
+            ind = market_data.indicators(kdf)
+            last = ind.iloc[-1]
+            tech_txt = (f"MA5={last['MA5']:.2f} MA20={last['MA20']:.2f} MA60={last['MA60']:.2f} "
+                        f"MACD={last['MACD']:.3f} RSI={last['RSI']:.1f} "
+                        f"布林上={last['BOLL上']:.2f} 布林下={last['BOLL下']:.2f}")
+        except Exception as e:
+            tech_err = f"（技术面不可用: {e}）"
 
-        trend_df, _period = analysis.trend(ind, date_column="日期", value_columns="收盘")
-        fdf, finfo = market_data.forecast_model(kdf["收盘"], 10, "auto")
-        docs = knowledge.query(topic, top_k)
+        trend_txt = ""
+        if ind is not None:
+            try:
+                trend_df, _period = analysis.trend(ind, date_column="日期", value_columns="收盘")
+                trend_txt = trend_df.to_string(index=False)
+            except Exception as e:
+                trend_txt = f"（趋势统计不可用: {e}）"
 
-        ai_input = [f"行情: {quote_txt}", f"技术面: {tech_txt}",
-                    "趋势: " + trend_df.to_string(index=False),
-                    f"预测({finfo.get('模型')}): " + fdf.to_string(index=False)]
-        if docs:
-            for d in docs[:3]:
-                ai_input.append(f"研报({d['来源']}): {d['内容'][:200]}")
+        forecast_txt = ""
+        forecast_model_name = ""
+        if kdf is not None:
+            try:
+                fdf, finfo = market_data.forecast_model(kdf["收盘"], 10, "auto")
+                forecast_model_name = finfo.get("模型") or ""
+                forecast_txt = fdf.to_string(index=False)
+            except Exception as e:
+                forecast_txt = f"（预测不可用: {e}）"
 
-        client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-        resp = client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=[
-                {"role": "system", "content": "你是资深卖方分析师，基于实时行情、技术指标、趋势统计与历史研报，"
-                                               "撰写结构化投资研究报告（中文，600字内），分：核心观点/行情与技术面/"
-                                               "趋势与预测/研报观点/风险提示。"},
-                {"role": "user", "content": f"研究对象: {name}（{symbol}）\n问题: {topic}\n\n数据:\n"
-                                             + "\n".join(ai_input)[:6000]},
-            ],
-            max_tokens=1200,
-        )
-        conclusion = resp.choices[0].message.content or ""
+        try:
+            docs = knowledge.query(topic, top_k)
+        except Exception:
+            docs = []
+
+        ai_input = [f"行情: {quote_txt}"]
+        if tech_txt:
+            ai_input.append(f"技术面: {tech_txt}")
+        if trend_txt and not trend_txt.startswith("（"):
+            ai_input.append("趋势: " + trend_txt)
+        if forecast_txt and not forecast_txt.startswith("（"):
+            ai_input.append(f"预测({forecast_model_name}): " + forecast_txt)
+        for d in docs[:3]:
+            ai_input.append(f"研报({d['来源']}): {d['内容'][:200]}")
+
+        try:
+            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+            resp = client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是资深卖方分析师，基于实时行情、技术指标、趋势统计与历史研报，"
+                                                   "撰写结构化投资研究报告（中文，600字内），分：核心观点/行情与技术面/"
+                                                   "趋势与预测/研报观点/风险提示。"},
+                    {"role": "user", "content": f"研究对象: {name}（{symbol}）\n问题: {topic}\n\n数据:\n"
+                                                 + "\n".join(ai_input)[:6000]},
+                ],
+                max_tokens=1200,
+            )
+            conclusion = resp.choices[0].message.content or ""
+        except Exception as e:
+            # AI 结论降级：数据章节仍保留，标注人工研判
+            conclusion = (f"（AI 综合结论不可用: {e}。"
+                          f"上方行情/技术面/趋势/知识库数据为本地或实时计算，可人工研判。）")
 
         lines = [
             f"# {name}（{symbol}）投资研究报告",
             f"**行情**（{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}）: {quote_txt}",
             "",
-            f"**技术面**: {tech_txt}",
-            "",
-            "**趋势统计**（近120个交易日）:",
-            trend_df.to_string(index=False),
-            "",
-            f"**未来10日预测（模型: {finfo.get('模型')}，仅供研究参考）**:",
-            fdf.to_string(index=False),
-            "",
-            "**知识库研报观点**:",
         ]
+        if tech_txt:
+            lines.append(f"**技术面**: {tech_txt}")
+        else:
+            lines.append(f"**技术面**: {tech_err}")
+        if trend_txt:
+            lines += ["", "**趋势统计**（近120个交易日）:", trend_txt]
+        if forecast_txt:
+            lines += ["", f"**未来10日预测（模型: {forecast_model_name}，仅供研究参考）**:", forecast_txt]
+        lines += ["", "**知识库研报观点**:"]
         if docs:
             for i, d in enumerate(docs[:3], 1):
                 lines.append(f"[{i}] 来源 {d['来源']}: {d['内容'][:300]}")
@@ -1922,7 +1978,7 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
             lines.append("（知识库为空，可先把研报添加到知识库）")
         lines += ["", "## AI 综合结论", conclusion,
                   "", "📌 来源：实时行情 + 历史K线指标 + RAG 知识库 + 线性预测（多源）"]
-        body = "\n".join(lines)
+        body = "\n".join(lines) + AI_DISCLAIMER
         if save:
             REPORT_DIR = Path(__file__).parent / "reports"
             REPORT_DIR.mkdir(exist_ok=True)

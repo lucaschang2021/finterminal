@@ -77,3 +77,38 @@ def test_parse_file_index_bare_digit():
     assert m._parse_file_index("文件4") == 3
     assert m._parse_file_index("2026年数据") is None
     assert m._parse_file_index("画折线图") is None
+
+
+def test_research_agent_offline_degrades_gracefully(monkeypatch):
+    """离线时 research_agent 逐章节降级：保留数据章节并标注，而不是整份失败。"""
+    def fake_quote(symbol):
+        raise RuntimeError("network down")
+
+    def fake_kline(symbol, *a, **k):
+        raise RuntimeError("network down")
+
+    def fake_api_error():
+        return None
+
+    monkeypatch.setattr(m, "_api_key_error", fake_api_error)
+    monkeypatch.setattr(m.market_data, "quote", fake_quote)
+    monkeypatch.setattr(m.market_data, "kline", fake_kline)
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            raise RuntimeError("network down")
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    monkeypatch.setattr(m.openai, "OpenAI", lambda *a, **k: FakeClient())
+    out = m.research_agent("写一份贵州茅台的研究报告", save=False)
+    assert isinstance(out, str) and out.strip()
+    assert "投资研究报告" in out
+    assert "（技术面不可用" in out
+    assert "AI 综合结论不可用" in out
+    assert "风险提示" in out
+    assert not out.startswith("❌ 研究失败"), out[:200]
