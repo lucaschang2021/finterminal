@@ -24,6 +24,8 @@ win:
       arch:
         - x64
   icon: build/icon.ico
+  # 无代码签名证书环境：跳过签名与 exe 编辑（避免 winCodeSign 符号链接权限问题）
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
