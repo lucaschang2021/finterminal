@@ -132,6 +132,76 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DESKTOP_DIR = config.get("desktop_dir") or os.path.join(os.path.expanduser("~"), "Desktop")
 MAX_TOOL_ROUNDS = 4  # 单次 ask 最多执行的工具调用轮数（防止无限循环）
 
+
+def save_api_key(api_key: str):
+    """保存 DeepSeek API Key：优先 Windows 凭据管理器，失败降级 config.json（明文）。
+    保存后运行时立即生效（无需重启）。返回 (成功, 消息)。"""
+    global DEEPSEEK_API_KEY
+    key = (api_key or "").strip()
+    if not key:
+        return False, "API Key 不能为空"
+    mode = "config.json（明文，建议优先使用凭据管理器）"
+    try:
+        import keyring
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
+        mode = "Windows 凭据管理器"
+    except Exception:
+        # 降级：写入 config.json（保留其它字段）
+        cfg = dict(config)
+        cfg["deepseek_api_key"] = key
+        try:
+            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+            config.update(cfg)
+        except Exception as e:
+            return False, f"保存失败: {e}"
+    DEEPSEEK_API_KEY = key
+    return True, f"API Key 已保存（存储位置: {mode}）"
+
+
+def clear_api_key():
+    """清除 API Key（keyring + config.json），运行时立即失效。"""
+    global DEEPSEEK_API_KEY
+    try:
+        import keyring
+        try:
+            keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    cfg = dict(config)
+    cfg.pop("deepseek_api_key", None)
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+    config.clear()
+    config.update(cfg)
+    DEEPSEEK_API_KEY = ""
+    return True, "API Key 已清除"
+
+
+def api_key_status():
+    """API Key 状态（不返回 key 本身）：是否配置 + 来源 + 当前模型。"""
+    env = os.environ.get("DEEPSEEK_API_KEY")
+    configured, source = False, "未配置"
+    if env:
+        configured, source = True, "环境变量"
+    else:
+        try:
+            import keyring
+            if keyring.get_password(KEYRING_SERVICE, KEYRING_USER):
+                configured, source = True, "Windows 凭据管理器"
+        except Exception:
+            pass
+        if not configured and config.get("deepseek_api_key"):
+            configured, source = True, "config.json"
+    return {"configured": configured, "source": source, "model": DEEPSEEK_MODEL}
+
+
 # AI 生成内容的统一风险提示：所有 AI 结论出口必须附带，提醒人工复核
 AI_DISCLAIMER = (
     "\n\n⚠️ 风险提示：以上结论由 AI 生成，仅供研究参考，不构成投资建议。"

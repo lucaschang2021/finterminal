@@ -199,6 +199,32 @@ class AskReq(BaseModel):
     query: str
 
 
+class ApiKeyReq(BaseModel):
+    api_key: str
+
+
+@app.post("/api/settings/api-key")
+def set_api_key(req: ApiKeyReq):
+    """保存 DeepSeek API Key（BYOK：每个使用者配置自己的 Key，keyring 优先）。"""
+    ok, msg = m.save_api_key(req.api_key)
+    if not ok:
+        return _err(msg)
+    return _ok({"configured": True}, text=msg)
+
+
+@app.get("/api/settings/api-key/status")
+def api_key_status():
+    """查询 API Key 配置状态（不返回 Key 本身）。"""
+    return _ok(m.api_key_status())
+
+
+@app.delete("/api/settings/api-key")
+def delete_api_key():
+    """清除已保存的 API Key。"""
+    _ok_text, msg = m.clear_api_key()
+    return _ok({"configured": False}, text=msg)
+
+
 @app.post("/api/ask")
 def ask(req: AskReq):
     try:
