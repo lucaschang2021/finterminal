@@ -28,6 +28,7 @@ finterminal-desktop/release/
 finterminal-desktop/*.tsbuildinfo
 finterminal-desktop/vite.config.js
 finterminal-desktop/vite.config.d.ts
+finterminal-desktop/shots/
 
 # 日志与临时文件
 *.log
