@@ -20,8 +20,10 @@ app = FastAPI(title="FinTerminal API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    # 仅绑定 127.0.0.1 的本地回环服务，无 Cookie 会话凭证；
+    # 允许任意 Origin 以兼容 Electron 生产模式（file:// 下 Origin 为 null/file://）
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

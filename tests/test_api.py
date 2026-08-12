@@ -63,3 +63,11 @@ def test_chart_file_served_within_charts_dir(client, tmp_path, monkeypatch):
 def test_ask_route(client):
     r = client.post("/api/ask", json={"query": "帮我看看这个"}).json()
     assert r["ok"] and ("没太理解" in r["text"] or "当前上下文" in r["text"])
+
+
+def test_cors_allows_electron_file_origin(client):
+    """Electron 生产模式（file:// 加载，Origin 为 null/file://）必须能跨域调用本地 API。"""
+    r = client.get("/api/health", headers={"Origin": "null"})
+    assert r.headers.get("access-control-allow-origin") == "*"
+    r2 = client.get("/api/health", headers={"Origin": "file://"})
+    assert r2.headers.get("access-control-allow-origin") == "*"

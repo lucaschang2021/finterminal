@@ -1149,7 +1149,7 @@ def _load_data(file_path: str):
         except ImportError as e:
             raise ValueError(f"读取 .xls 需要安装 xlrd：pip install xlrd（{e}）") from e
     else:
-        raise ValueError(f"不支持的文件类型: {ext}")
+        raise ValueError(f"不支持的文件类型: {ext or '(无扩展名)'}")
 
 def _plot(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
