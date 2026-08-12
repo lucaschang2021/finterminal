@@ -64,6 +64,16 @@ export const api = {
   },
   ask: (query: string) =>
     request<ApiResult>('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) }),
+  settingsApiKeyStatus: () =>
+    request<ApiResult<{ configured: boolean; source: string; model: string }>>('/settings/api-key/status'),
+  settingsApiKeySave: (apiKey: string) =>
+    request<ApiResult<{ configured: boolean }>>('/settings/api-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+  settingsApiKeyDelete: () =>
+    request<ApiResult<{ configured: boolean }>>('/settings/api-key', { method: 'DELETE' }),
   knowledge: (body: Record<string, unknown>) =>
     request<ApiResult>('/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   knowledgeQuery: (body: Record<string, unknown>) =>

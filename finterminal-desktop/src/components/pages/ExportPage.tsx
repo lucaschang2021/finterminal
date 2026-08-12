@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { api, fileUrl } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { stripEmoji } from '@/lib/utils'
 
 interface ExportGroup {
   title: string
@@ -19,7 +20,7 @@ export default function ExportPage() {
   const groups: ExportGroup[] = [
     {
       title: '报告导出',
-      desc: '统计分析报告 / 研报 → PDF 或 Markdown',
+      desc: '统计分析报告 / 研报（PDF / Markdown）',
       actions: [
         {
           label: '生成 PDF 报告',
@@ -88,7 +89,7 @@ export default function ExportPage() {
     try {
       setResult(await a.run())
     } catch (e) {
-      setResult(`❌ ${(e as Error).message}`)
+      setResult((e as Error).message)
     } finally {
       setBusy('')
     }
@@ -96,10 +97,10 @@ export default function ExportPage() {
 
   return (
     <div className="p-5">
-      <h2 className="mb-1 text-lg font-semibold">导出</h2>
-      <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>报告 · 图表 · 数据链证明 · 知识库</p>
+      <h2 className="page-title">导出</h2>
+      <p className="page-sub mb-4">报告 · 图表 · 数据链证明 · 知识库</p>
 
-      <div className="liquid-glass mb-4 rounded-xl p-4" style={{ borderRadius: 14 }}>
+      <div className="liquid-glass d2-cut mb-4 p-4">
         <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>参数</div>
         <div className="flex gap-2">
           <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="数据文件路径（报告/图表导出用）"
@@ -111,7 +112,7 @@ export default function ExportPage() {
 
       <div className="grid grid-cols-2 gap-4">
         {groups.map((g, gi) => (
-          <div key={g.title} className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+          <div key={g.title} className="liquid-glass d2-cut p-4">
             <div className="mb-1 text-sm font-medium">{g.title}</div>
             <div className="mb-3 text-[11px]" style={{ color: 'var(--muted)' }}>{g.desc}</div>
             <div className="flex flex-wrap gap-2">
@@ -126,9 +127,9 @@ export default function ExportPage() {
       </div>
 
       {result && (
-        <div className="liquid-glass mt-4 rounded-xl p-4" style={{ borderRadius: 14 }}>
+        <div className="liquid-glass d2-cut mt-4 p-4">
           <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>导出结果</div>
-          <pre className="mono max-h-72 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+          <pre className="mono max-h-72 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(result)}</pre>
         </div>
       )}
     </div>

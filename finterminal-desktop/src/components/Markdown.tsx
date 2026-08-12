@@ -1,4 +1,7 @@
+import { Pin, TriangleAlert } from 'lucide-react'
+
 import { fileUrl } from '@/api'
+import { stripEmoji } from '@/lib/utils'
 
 /**
  * 轻量 Markdown 渲染：
@@ -36,7 +39,17 @@ function renderLine(line: string, key: number) {
     )
   }
   if (t.startsWith('📌') || t.startsWith('⚠️')) {
-    return <div key={key} className="mt-2 rounded bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300">{renderInline(t)}</div>
+    const risk = t.startsWith('⚠️')
+    const Icon = risk ? TriangleAlert : Pin
+    return (
+      <div
+        key={key}
+        className={`mt-2 flex items-start gap-2 rounded px-3 py-2 text-[12px] ${risk ? 'bg-amber-500/10 text-amber-300' : 'bg-sky-500/10 text-sky-300'}`}
+      >
+        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+        <span>{renderInline(t.replace(/^[📌⚠️]\s*/, ''))}</span>
+      </div>
+    )
   }
   return <p key={key} className="leading-relaxed">{renderInline(t)}</p>
 }
@@ -46,7 +59,7 @@ function renderInline(text: string) {
   return parts.map((p, i) =>
     p.startsWith('**') && p.endsWith('**')
       ? <strong key={i} className="font-semibold text-foreground">{p.slice(2, -2)}</strong>
-      : <span key={i}>{p}</span>,
+      : <span key={i}>{stripEmoji(p)}</span>,
   )
 }
 

@@ -161,6 +161,13 @@ function createWindow(port) {
     },
   })
 
+  // 就绪后强制聚焦，确保“按任意键以启动”立即可用
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.focus()
+  })
+
   const startUrl = process.env.ELECTRON_START_URL || null
   if (startUrl) {
     mainWindow.loadURL(startUrl)

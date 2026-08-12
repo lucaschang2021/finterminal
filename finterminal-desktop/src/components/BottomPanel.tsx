@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useGSAP } from '@gsap/react'
+import gsap from 'gsap'
+import { BarChart3, ChevronUp, FileText, Link2, PieChart } from 'lucide-react'
 
 import { api, streamAsk } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { stripEmoji } from '@/lib/utils'
 import EChart from './EChart'
 
 interface BottomPanelProps {
@@ -14,32 +18,84 @@ interface BottomPanelProps {
 }
 
 export default function BottomPanel({ open, onOpenChange, chartType }: BottomPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [render, setRender] = useState(open)
+
+  useEffect(() => {
+    if (open) {
+      setRender(true)
+    } else {
+      const t = window.setTimeout(() => setRender(false), 450)
+      return () => window.clearTimeout(t)
+    }
+  }, [open])
+
+  // 抽屉开合：弹性缓动 + 内容浮入
+  useGSAP(() => {
+    const el = panelRef.current
+    if (!el) return
+    const mm = gsap.matchMedia()
+    mm.add('(prefers-reduced-motion: reduce)', () => {
+      gsap.set(el, { height: open ? 340 : 22 })
+    })
+    mm.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo(
+        el,
+        { height: open ? 22 : 340 },
+        {
+          height: open ? 340 : 22,
+          duration: open ? 0.62 : 0.32,
+          ease: open ? 'elastic.out(1, 0.7)' : 'power3.inOut',
+          overwrite: 'auto',
+        },
+      )
+      if (open) {
+        gsap.fromTo(
+          '.bp-content',
+          { opacity: 0, y: 14 },
+          { opacity: 1, y: 0, duration: 0.5, delay: 0.1, ease: 'power3.out', clearProps: 'transform' },
+        )
+      }
+    })
+    return () => mm.revert()
+  }, { scope: panelRef, dependencies: [open] })
+
   return (
     <div
-      className="glass-highlight relative shrink-0 overflow-hidden border-t transition-all duration-500"
+      ref={panelRef}
+      className="glass-highlight relative shrink-0 overflow-hidden border-t"
       style={{
-        height: open ? 340 : 22,
-        borderColor: 'rgba(255,255,255,0.05)',
-        background: open ? 'rgba(22,27,34,0.42)' : 'transparent',
-        backdropFilter: open ? 'blur(28px) saturate(1.6)' : 'none',
-        WebkitBackdropFilter: open ? 'blur(28px) saturate(1.6)' : 'none',
+        height: 22,
+        borderColor: 'var(--hairline)',
+        background: open ? 'var(--glass-bg)' : 'transparent',
       }}
     >
-      <div className="flow-current blue-gold" style={{ '--flow-strength': '8%', '--flow-speed': '16s' } as React.CSSProperties} />
-
-      {/* 窗帘拉手 */}
+      {/* 窗口拉手 */}
       <button
-        className="absolute left-1/2 top-0 z-10 flex h-[22px] -translate-x-1/2 items-center px-6"
+        className="absolute left-1/2 top-0 z-10 flex h-[22px] -translate-x-1/2 items-center justify-center"
         onClick={() => onOpenChange(!open)}
         title={open ? '收起' : '拉出'}
       >
-        <span className="h-1 w-12 rounded-full bg-[var(--muted)] opacity-50 transition-all hover:w-16 hover:opacity-80" />
+        <span
+          className="flex h-[15px] w-12 items-center justify-center rounded-b-md border-x border-b"
+          style={{
+            borderColor: 'var(--hairline-strong)',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'var(--muted)',
+          }}
+        >
+          <ChevronUp
+            className="h-3 w-3"
+            strokeWidth={2}
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.35s ease' }}
+          />
+        </span>
       </button>
 
-      {open && (
-        <div className="relative h-full px-4 pb-3 pt-3">
+      {render && (
+        <div className="bp-content relative h-full px-4 pb-3 pt-3">
           <Tabs defaultValue={chartType ? 'chart' : 'report'}>
-            <TabsList className="h-8 border-0 bg-white/5">
+            <TabsList className="bp-tabs h-8 gap-1 border-0 bg-white/5">
               <TabsTrigger value="chart" className="h-6 px-3 text-xs">图表详情</TabsTrigger>
               <TabsTrigger value="report" className="h-6 px-3 text-xs">研报分析</TabsTrigger>
               <TabsTrigger value="chain" className="h-6 px-3 text-xs">数据链可视化</TabsTrigger>
@@ -60,6 +116,43 @@ export default function BottomPanel({ open, onOpenChange, chartType }: BottomPan
           </Tabs>
         </div>
       )}
+    </div>
+  )
+}
+
+/** 精致的空状态引导卡片，避免面板里出现大块空白 */
+function EmptyState({
+  icon,
+  title,
+  desc,
+  actions,
+}: {
+  icon: ReactNode
+  title: string
+  desc: string
+  actions: string[]
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div
+        className="liquid-glass flex h-14 w-14 items-center justify-center rounded-2xl"
+        style={{ borderRadius: 16 }}
+      >
+        <span className="flex items-center justify-center text-[var(--accent)]">{icon}</span>
+      </div>
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="max-w-sm text-xs leading-relaxed" style={{ color: 'var(--muted)' }}>{desc}</div>
+      <div className="flex flex-wrap justify-center gap-2 pt-1">
+        {actions.map((a) => (
+          <span
+            key={a}
+            className="rounded-full border px-3 py-1 text-xs transition-colors"
+            style={{ borderColor: 'rgba(255,255,255,0.1)', color: 'var(--muted)' }}
+          >
+            {a}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -118,10 +211,15 @@ function ChartDetail({ initialType }: { initialType?: string }) {
         {err && <p className="text-[11px] text-destructive">{err}</p>}
       </div>
       <div className="min-w-0 flex-1">
-        {option ? <EChart option={option} height="100%" /> : (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>
-            选择图表或分析数据以查看详情
-          </div>
+        {option ? (
+          <EChart option={option} height="100%" />
+        ) : (
+          <EmptyState
+            icon={<BarChart3 className="h-6 w-6" />}
+            title="还没有图表"
+            desc="填写数据文件路径并选择图表类型，即可在这里渲染折线、K 线、雷达等 13 种图表。"
+            actions={['折线图', 'K线图', '饼图', '热力图']}
+          />
         )}
       </div>
     </div>
@@ -136,21 +234,26 @@ function ReportTab() {
     setBusy(true); setResult('')
     const id = Date.now()
     streamAsk(topic, (d) => setResult((prev) => prev + d))
-      .catch((e) => setResult(`❌ ${(e as Error).message}`))
+      .catch((e) => setResult((e as Error).message))
       .finally(() => setBusy(false))
   }
   return (
     <div className="flex h-full gap-3">
-      <div className="w-72 space-y-2">
+      <div className="w-72 shrink-0 space-y-2">
         <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
           className="glass-input w-full resize-none rounded-md p-2 text-xs outline-none" />
         <Button size="sm" onClick={run} disabled={busy}>{busy ? '生成中…' : '生成研报'}</Button>
       </div>
       <ScrollArea className="min-w-0 flex-1">
         {result ? (
-          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(result)}</pre>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>输入主题生成研报，例如：写一份贵州茅台的研究报告</div>
+          <EmptyState
+            icon={<FileText className="h-6 w-6" />}
+            title="研报生成器"
+            desc="输入主题，AI 会基于本地数据链与知识库流式生成研究报告。"
+            actions={['贵州茅台', '市场行情', '行业分析']}
+          />
         )}
       </ScrollArea>
     </div>
@@ -161,11 +264,11 @@ function ChainTab() {
   const [path, setPath] = useState('')
   const [result, setResult] = useState('')
   const run = (action: string) => {
-    api.chain({ action, path: path || undefined }).then((r) => setResult(r.text ?? '')).catch((e) => setResult(`❌ ${(e as Error).message}`))
+    api.chain({ action, path: path || undefined }).then((r) => setResult(r.text ?? '')).catch((e) => setResult((e as Error).message))
   }
   return (
     <div className="flex h-full gap-3">
-      <div className="w-72 space-y-2">
+      <div className="w-72 shrink-0 space-y-2">
         <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="路径（可选）"
           className="glass-input h-8 border-0 text-xs" />
         <div className="flex flex-wrap gap-2">
@@ -176,9 +279,14 @@ function ChainTab() {
       </div>
       <ScrollArea className="min-w-0 flex-1">
         {result ? (
-          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(result)}</pre>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>选择操作查看数据链状态：快照 / 校验 / 历史</div>
+          <EmptyState
+            icon={<Link2 className="h-6 w-6" />}
+            title="数据链可视化"
+            desc="查看数据链状态、快照、校验与历史记录，追踪每一步数据变更。"
+            actions={['状态', '快照', '校验', '历史']}
+          />
         )}
       </ScrollArea>
     </div>
@@ -200,11 +308,11 @@ function StatsTab() {
       if (analysis === 'backtest') body.signal_column = extra
       body.value_columns = extra
     }
-    api.analyze(body).then((r) => setResult(r.text ?? '')).catch((e) => setResult(`❌ ${(e as Error).message}`))
+    api.analyze(body).then((r) => setResult(r.text ?? '')).catch((e) => setResult((e as Error).message))
   }
   return (
     <div className="flex h-full gap-3">
-      <div className="w-72 space-y-2">
+      <div className="w-72 shrink-0 space-y-2">
         <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="数据文件路径"
           className="glass-input h-8 border-0 text-xs" />
         <select value={analysis} onChange={(e) => setAnalysis(e.target.value)}
@@ -219,9 +327,14 @@ function StatsTab() {
       </div>
       <ScrollArea className="min-w-0 flex-1">
         {result ? (
-          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{result}</pre>
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(result)}</pre>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>选择分析类型并填写数据文件，运行统计分析</div>
+          <EmptyState
+            icon={<PieChart className="h-6 w-6" />}
+            title="统计分析"
+            desc="选择分析类型并填写数据文件，运行描述统计、相关性、回归、事件研究等分析。"
+            actions={['描述统计', '相关性', '回归', '事件研究']}
+          />
         )}
       </ScrollArea>
     </div>

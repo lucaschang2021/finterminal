@@ -7,6 +7,9 @@ interface EChartProps {
   className?: string
 }
 
+const CHART_FONT =
+  "'Rajdhani', 'SF Pro Display', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+
 export default function EChart({ option, height = 360, className }: EChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null)
@@ -26,7 +29,16 @@ export default function EChart({ option, height = 360, className }: EChartProps)
 
   useEffect(() => {
     if (chartRef.current && option) {
-      chartRef.current.setOption(option, true)
+      chartRef.current.setOption(
+        {
+          textStyle: { fontFamily: CHART_FONT },
+          title: { textStyle: { fontFamily: CHART_FONT } },
+          legend: { textStyle: { fontFamily: CHART_FONT } },
+          tooltip: { textStyle: { fontFamily: CHART_FONT } },
+          ...option,
+        },
+        true,
+      )
     }
   }, [option])
 

@@ -1,0 +1,335 @@
+.splash {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #2b313d 0%, #39404e 50%, #272d38 100%);
+  color: #eaedf2;
+  font-family: 'Inter', 'SF Pro Display', 'Helvetica Neue', 'Segoe UI Variable Display',
+    'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.splash-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 78% 60% at 50% 40%, rgba(156, 166, 186, 0.42), transparent 68%),
+    radial-gradient(ellipse 48% 40% at 22% 20%, rgba(128, 140, 162, 0.36), transparent 64%),
+    radial-gradient(ellipse 54% 44% at 80% 74%, rgba(112, 124, 148, 0.4), transparent 64%),
+    radial-gradient(ellipse 42% 36% at 68% 20%, rgba(144, 154, 174, 0.3), transparent 62%),
+    radial-gradient(ellipse 40% 34% at 26% 80%, rgba(132, 144, 166, 0.34), transparent 62%);
+  filter: blur(15px);
+}
+.splash-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.1) 0%, transparent 24%),
+    linear-gradient(298deg, rgba(255, 255, 255, 0.08) 0%, transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 34%);
+}
+
+.splash-breath {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  width: 860px;
+  height: 860px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(220, 226, 238, 0.30),
+    rgba(180, 190, 208, 0.14) 40%,
+    rgba(150, 160, 180, 0.06) 58%,
+    transparent 74%
+  );
+  animation: splash-breath 3.2s ease-in-out infinite;
+}
+@keyframes splash-breath {
+  0%, 100% { opacity: 0.72; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+}
+
+.splash-diamond {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  width: 300px;
+  height: 311px;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  transition: opacity 0.5s ease;
+}
+.splash-diamond img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.splash-diamond canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.splash-brand {
+  position: absolute;
+  left: 50%;
+  top: 60.5%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  text-align: center;
+  transition: opacity 0.8s ease;
+}
+.splash-brand h1 {
+  margin: 0;
+  font-size: 41px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  margin-left: 0.28em;
+  color: #eaedf2;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45), 0 0 30px rgba(150, 185, 255, 0.3), 0 0 60px rgba(120, 140, 255, 0.18);
+}
+
+.splash-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 44px;
+  z-index: 3;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.42em;
+  margin-left: 0.42em;
+  color: #8a94a6;
+  transition: opacity 0.4s ease;
+  animation: splash-hint-blink 2.6s ease-in-out infinite;
+}
+@keyframes splash-hint-blink {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.95; }
+}
+
+.splash.is-hidden .splash-brand,
+.splash.is-hidden .splash-hint {
+  opacity: 0;
+}
+
+.splash-blocks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* ---------- 登录卡片 ---------- */
+.splash-login {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+.splash-login.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.splash-login .card {
+  width: 400px;
+  border-radius: 26px;
+  padding: 40px 42px 24px;
+  background: linear-gradient(180deg, rgba(9, 12, 23, 0.95), rgba(4, 7, 15, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  position: relative;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  text-align: center;
+  transform: scale(0.96);
+}
+.splash-login.show .card {
+  transform: scale(1);
+}
+.splash-login .card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+.splash-login .logo {
+  width: 58px;
+  height: 60px;
+  margin: 0 auto 16px;
+  display: block;
+  filter: grayscale(1) contrast(1.15) brightness(1.2);
+}
+.splash-login .title {
+  color: #f2f4f8;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  margin-left: 0.18em;
+}
+.splash-login .sub {
+  color: #7e8899;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  margin: 8px 0 30px;
+}
+.splash-login .field {
+  text-align: left;
+  margin-bottom: 16px;
+}
+.splash-login .field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #98a2b3;
+  margin-bottom: 7px;
+  padding-left: 2px;
+}
+.splash-login input[type='text'],
+.splash-login input[type='password'] {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #e8ecf3;
+  padding: 0 15px;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.splash-login input::placeholder {
+  color: #5e677a;
+}
+.splash-login input:focus {
+  border-color: rgba(150, 180, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.12);
+}
+.splash-login .btn {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: 0;
+  margin-top: 6px;
+  background: linear-gradient(180deg, #f4f6f9, #d8dde6);
+  color: #111827;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+.splash-login .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.splash-login .err {
+  color: #e0686a;
+  font-size: 12px;
+  text-align: left;
+  margin: 2px 2px 6px;
+  min-height: 16px;
+}
+.splash-login .foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  font-size: 12px;
+  color: #7e8899;
+}
+.splash-login .remember {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.splash-login .remember .box {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #101828;
+  font-size: 10px;
+}
+.splash-login .remember .box.on {
+  background: #e8ecf3;
+  border-color: #e8ecf3;
+}
+.splash-login .links span {
+  margin-left: 14px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.splash-login .links span:hover {
+  color: #d7deea;
+}
+.splash-login .hair {
+  height: 1px;
+  margin: 22px 0 12px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+.splash-login .ver {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #565f70;
+}
+.splash-login .chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.splash-login .chip {
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a9b3c4;
+  cursor: pointer;
+  border: 0;
+  font-family: inherit;
+  transition: color 0.2s, background 0.2s;
+}
+.splash-login .chip:hover {
+  color: #e6ecf5;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-breath,
+  .splash-hint {
+    animation: none !important;
+  }
+}

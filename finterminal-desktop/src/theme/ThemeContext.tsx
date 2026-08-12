@@ -4,6 +4,7 @@ import {
   currentColors,
   effectiveMode,
   hexToHsl,
+  isLightColor,
   loadTheme,
   saveTheme,
   type ThemeConfig,
@@ -33,10 +34,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     saveTheme(config)
     const colors = currentColors(config)
     const root = document.documentElement
-    root.style.setProperty('--accent', colors.primary)
+    // 极致简约：主色统一为无彩度灰白（浅色模式用深灰保证对比度）
+    const accent = mode === 'light' ? '#3C4043' : '#EDEDED'
+    root.style.setProperty('--accent', accent)
     root.style.setProperty('--accent2', colors.secondary)
-    root.style.setProperty('--primary', hexToHsl(colors.primary))
-    root.style.setProperty('--ring', hexToHsl(colors.primary))
+    root.style.setProperty('--primary', hexToHsl(accent))
+    root.style.setProperty('--primary-foreground', isLightColor(accent) ? '0 0% 11%' : '0 0% 100%')
+    root.style.setProperty('--ring', hexToHsl(accent))
     root.style.setProperty('--flow-speed', `${Math.max(4, config.flowSpeed)}s`)
     root.style.setProperty('--flow-strength', `${Math.max(2, Math.min(30, config.flowStrength))}%`)
     root.dataset.mode = mode
@@ -47,18 +51,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--fg', '#1A2029')
       root.style.setProperty('--muted', '#6B7280')
       root.style.setProperty('--glass-bg', 'rgba(255,255,255,0.45)')
-      root.style.setProperty('--glass-border', 'rgba(255,255,255,0.7)')
+      root.style.setProperty('--glass-border', 'rgba(15,23,42,0.12)')
       root.style.setProperty('--card-bg', 'rgba(255,255,255,0.55)')
     } else {
-      root.style.setProperty('--bg', '#0A0E14')
-      root.style.setProperty('--bg-deep', '#070A0F')
-      root.style.setProperty('--fg', '#EAEDF2')
-      root.style.setProperty('--muted', '#7A8290')
-      root.style.setProperty('--glass-bg', 'rgba(22,27,34,0.45)')
-      root.style.setProperty('--glass-border', 'rgba(255,255,255,0.06)')
-      root.style.setProperty('--card-bg', 'rgba(22,27,34,0.55)')
+      root.style.setProperty('--bg', '#212121')
+      root.style.setProperty('--bg-deep', '#1A1A1A')
+      root.style.setProperty('--fg', '#ECECF1')
+      root.style.setProperty('--muted', '#9096A0')
+      root.style.setProperty('--glass-bg', 'rgba(44,44,48,0.55)')
+      root.style.setProperty('--glass-border', 'rgba(255,255,255,0.08)')
+      root.style.setProperty('--card-bg', 'rgba(50,50,54,0.6)')
     }
   }, [config, mode, now])
+
+  // 深浅切换柔和过渡：切换瞬间加 class，让所有颜色属性平滑过渡
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.add('theme-switching')
+    const t = window.setTimeout(() => root.classList.remove('theme-switching'), 650)
+    return () => window.clearTimeout(t)
+  }, [mode])
 
   return (
     <ThemeContext.Provider value={{

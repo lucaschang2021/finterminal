@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { stripEmoji } from '@/lib/utils'
 
 const HOME = 'C:/Users/liuj/Desktop'
 
@@ -41,10 +42,10 @@ export default function FilesPage() {
 
   return (
     <div className="p-5">
-      <h2 className="mb-1 text-lg font-semibold">文件</h2>
-      <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>目录浏览 · 搜索 · 文件体检</p>
+      <h2 className="page-title">文件</h2>
+      <p className="page-sub mb-4">目录浏览 · 搜索 · 文件体检</p>
 
-      <div className="liquid-glass mb-4 rounded-xl p-4" style={{ borderRadius: 14 }}>
+      <div className="liquid-glass d2-cut mb-4 p-4">
         <div className="flex gap-2">
           <Input value={path} onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="目录路径"
@@ -59,7 +60,7 @@ export default function FilesPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+        <div className="liquid-glass d2-cut p-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>{path}</span>
             <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{list.length} 项</span>
@@ -86,19 +87,19 @@ export default function FilesPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+          <div className="liquid-glass d2-cut p-4">
             <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>搜索 / 体检目标</div>
             <div className="flex gap-2">
               <Input value={detectTarget} onChange={(e) => setDetectTarget(e.target.value)} placeholder="文件完整路径"
                 className="glass-input h-9 flex-1 border-0" />
               <Button size="sm" variant="secondary" onClick={detect}>体检</Button>
             </div>
-            {detectRes && <pre className="mono mt-3 max-h-44 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{detectRes}</pre>}
+            {detectRes && <pre className="mono mt-3 max-h-44 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(detectRes)}</pre>}
           </div>
           {searchRes && (
-            <div className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+            <div className="liquid-glass d2-cut p-4">
               <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>搜索结果</div>
-              <pre className="mono max-h-52 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{searchRes}</pre>
+              <pre className="mono max-h-52 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(searchRes)}</pre>
             </div>
           )}
         </div>

@@ -4,6 +4,7 @@ import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { stripEmoji } from '@/lib/utils'
 
 export default function ChainPage() {
   const [status, setStatus] = useState('')
@@ -36,19 +37,19 @@ export default function ChainPage() {
 
   return (
     <div className="p-5">
-      <h2 className="mb-1 text-lg font-semibold">数据链</h2>
-      <p className="mb-4 text-xs" style={{ color: 'var(--muted)' }}>文件变更哈希链 · 快照校验 · 区块链基础</p>
+      <h2 className="page-title">数据链</h2>
+      <p className="page-sub mb-4">文件变更哈希链 · 快照校验 · 区块链基础</p>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+        <div className="liquid-glass d2-cut p-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>链状态</span>
             <Button size="sm" variant="ghost" onClick={refresh} className="h-6 px-2 text-xs">刷新</Button>
           </div>
-          <pre className="mono max-h-44 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{status}</pre>
+          <pre className="mono max-h-44 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(status)}</pre>
         </div>
 
-        <div className="liquid-glass rounded-xl p-4" style={{ borderRadius: 14 }}>
+        <div className="liquid-glass d2-cut p-4">
           <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>操作</div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => run('snapshot')}>快照</Button>
@@ -62,16 +63,16 @@ export default function ChainPage() {
               className="glass-input h-8 flex-1 border-0 text-xs" />
             <Button size="sm" variant="secondary" onClick={() => run('show')}>详情</Button>
           </div>
-          {verifyRes && <pre className="mono mt-3 max-h-32 overflow-auto whitespace-pre-wrap text-[11px]" style={{ color: 'var(--muted)' }}>{verifyRes}</pre>}
+          {verifyRes && <pre className="mono mt-3 max-h-32 overflow-auto whitespace-pre-wrap text-[11px]" style={{ color: 'var(--muted)' }}>{stripEmoji(verifyRes)}</pre>}
         </div>
       </div>
 
-      <div className="liquid-glass mt-4 rounded-xl p-4" style={{ borderRadius: 14 }}>
+      <div className="liquid-glass d2-cut mt-4 p-4">
         <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>变更历史</div>
         <ScrollArea className="h-56">
-          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{history}</pre>
+          <pre className="mono whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(history)}</pre>
         </ScrollArea>
-        {detail && <pre className="mono mt-3 border-t pt-3 text-[11px] leading-relaxed" style={{ color: 'var(--fg)', borderColor: 'rgba(255,255,255,0.06)' }}>{detail}</pre>}
+        {detail && <pre className="mono mt-3 border-t pt-3 text-[11px] leading-relaxed" style={{ color: 'var(--fg)', borderColor: 'var(--hairline)' }}>{stripEmoji(detail)}</pre>}
       </div>
     </div>
   )

@@ -7,12 +7,12 @@ export interface ThemePreset {
 }
 
 export const PRESETS: ThemePreset[] = [
-  { name: '深海', primary: '#5B9BFF', secondary: '#1F6FEB' },
-  { name: '烈焰', primary: '#E05A5A', secondary: '#E68A4A' },
-  { name: '熔金', primary: '#C9A84C', secondary: '#E68A4A' },
-  { name: '极光', primary: '#3FB950', secondary: '#5B9BFF' },
-  { name: '暗紫', primary: '#8957E5', secondary: '#5B9BFF' },
-  { name: '自定义', primary: '#5B9BFF', secondary: '#C9A84C' },
+  { name: '极简', primary: '#EDEDED', secondary: '#A9B0BA' },
+  { name: '月白', primary: '#D5DAE1', secondary: '#98A0AC' },
+  { name: '石墨', primary: '#B9C0CA', secondary: '#8A93A0' },
+  { name: '烟灰', primary: '#A3ABB8', secondary: '#79828F' },
+  { name: '墨灰', primary: '#8C95A3', secondary: '#646C78' },
+  { name: '自定义', primary: '#EDEDED', secondary: '#A9B0BA' },
 ]
 
 export type ThemeMode = 'dark' | 'light' | 'auto'
@@ -28,8 +28,8 @@ export interface ThemeConfig {
 
 export const DEFAULT_THEME: ThemeConfig = {
   presetIndex: 0,
-  customPrimary: '#5B9BFF',
-  customSecondary: '#C9A84C',
+  customPrimary: '#EDEDED',
+  customSecondary: '#A9B0BA',
   flowSpeed: 16,
   flowStrength: 8,
   mode: 'dark',
@@ -86,4 +86,14 @@ export function currentColors(cfg: ThemeConfig) {
     primary: isCustom ? cfg.customPrimary : preset.primary,
     secondary: isCustom ? cfg.customSecondary : preset.secondary,
   }
+}
+
+/** 判断颜色是否偏亮（决定前景文字用深色还是白色） */
+export function isLightColor(hex: string): boolean {
+  const h = hex.replace('#', '')
+  if (h.length < 6) return false
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150
 }

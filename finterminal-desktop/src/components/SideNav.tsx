@@ -5,6 +5,7 @@ import {
   FileText,
   FolderOpen,
   Link2,
+  Menu,
   MessageSquare,
   Network,
   Settings,
@@ -25,46 +26,55 @@ const ITEMS: { key: ViewKey; label: string; icon: React.ReactNode }[] = [
   { key: 'export', label: '导出', icon: <Upload className="h-[18px] w-[18px]" /> },
 ]
 
+const LABEL_STYLE: React.CSSProperties = {
+  whiteSpace: 'nowrap',
+  transition: 'opacity 0.25s ease 0.12s, transform 0.25s ease 0.12s',
+}
+
 export default function SideNav({ active, onSelect }: { active: ViewKey; onSelect: (k: ViewKey) => void }) {
   const [open, setOpen] = useState(false)
 
   return (
     <div
-      className="relative z-40 h-full shrink-0 border-r transition-all duration-500"
+      className="relative z-40 h-full shrink-0 border-r"
       style={{
         width: open ? 240 : 46,
-        borderColor: 'rgba(255,255,255,0.06)',
-        background: open ? 'rgba(22,27,34,0.50)' : 'transparent',
-        backdropFilter: open ? 'blur(24px) saturate(1.4)' : 'none',
-        WebkitBackdropFilter: open ? 'blur(24px) saturate(1.4)' : 'none',
+        borderColor: 'var(--hairline)',
+        background: open ? 'var(--rail-bg)' : 'transparent',
+        transition:
+          'width 0.5s cubic-bezier(0.32, 0.72, 0.32, 1), background 0.3s ease',
       }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      {/* 极淡蓝暗流 */}
-      {open && <div className="flow-current" style={{ '--flow-strength': '4%', '--flow-speed': '16s' } as React.CSSProperties} />}
-
-      <div className="relative flex h-14 items-center border-b px-3" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="relative flex h-14 items-center border-b px-3" style={{ borderColor: 'var(--hairline)' }}>
         <button
           className="flex items-center gap-2"
           onClick={() => onSelect('chat')}
           title="对话"
         >
-          <span className="flex h-6 w-6 items-center justify-center text-lg leading-none text-[var(--muted)]">≡</span>
-          {open && (
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Logo size={22} />
-              FinTerminal
-            </span>
-          )}
+          <span className="flex h-6 w-6 items-center justify-center text-[var(--muted)]">
+            <Menu className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+          <span
+            className="flex items-center gap-2 text-sm font-semibold"
+            style={{
+              ...LABEL_STYLE,
+              opacity: open ? 1 : 0,
+              transform: open ? 'translateX(0)' : 'translateX(-8px)',
+            }}
+          >
+            <Logo size={22} mono />
+            FinTerminal
+          </span>
         </button>
       </div>
 
-      <nav className="relative flex flex-col gap-1 p-2 pt-3">
+      <nav className="d2-nav relative flex flex-col gap-1 p-2 pt-3">
         <button
           className={cn(
-            'flex h-10 items-center gap-3 rounded-lg px-2 text-sm transition-colors',
-            active === 'chat' ? 'text-[var(--accent)]' : 'text-[var(--muted)] hover:text-[var(--fg)]',
+            'flex h-10 items-center gap-3 px-2 text-sm',
+            active === 'chat' ? 'active' : 'text-[var(--muted)]',
           )}
           onClick={() => onSelect('chat')}
           title="对话"
@@ -72,22 +82,24 @@ export default function SideNav({ active, onSelect }: { active: ViewKey; onSelec
           <span className="flex w-6 items-center justify-center text-[var(--muted)]">
             <MessageSquare className="h-[18px] w-[18px]" />
           </span>
-          {open && <span className="whitespace-nowrap">对话</span>}
+          <span className="font-medium" style={{ ...LABEL_STYLE, opacity: open ? 1 : 0, transform: open ? 'translateX(0)' : 'translateX(-8px)' }}>
+            对话
+          </span>
         </button>
         {ITEMS.map((item) => (
           <button
             key={item.key}
             className={cn(
-              'flex h-10 items-center gap-3 rounded-lg px-2 text-sm transition-colors',
-              active === item.key
-                ? 'bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]'
-                : 'text-[var(--muted)] hover:bg-white/5 hover:text-[var(--fg)]',
+              'flex h-10 items-center gap-3 px-2 text-sm',
+              active === item.key ? 'active' : 'text-[var(--muted)]',
             )}
             onClick={() => onSelect(item.key)}
             title={item.label}
           >
             <span className="flex w-6 items-center justify-center">{item.icon}</span>
-            {open && <span className="whitespace-nowrap">{item.label}</span>}
+            <span className="font-medium" style={{ ...LABEL_STYLE, opacity: open ? 1 : 0, transform: open ? 'translateX(0)' : 'translateX(-8px)' }}>
+              {item.label}
+            </span>
           </button>
         ))}
       </nav>
