@@ -593,19 +593,21 @@ def _ocr_pdf_pages(file_path, max_pages):
         return None, f"未安装 OCR 依赖：pip install pymupdf rapidocr-onnxruntime（{e}）"
     try:
         doc = fitz.open(file_path)
-        ocr = RapidOCR()
-        parts = []
-        for i in range(min(max_pages, len(doc))):
-            pix = doc[i].get_pixmap(dpi=200)
-            img_bytes = pix.tobytes("png")
-            result, _ = ocr(img_bytes)
-            if result:
-                lines = [item[1] for item in result]
-                parts.append(f"--- 第 {i + 1} 页（OCR）---\n" + "\n".join(lines))
-        doc.close()
-        if not parts:
-            return None, "页面渲染成功但未识别出文字"
-        return "\n".join(parts), None
+        try:
+            ocr = RapidOCR()
+            parts = []
+            for i in range(min(max_pages, len(doc))):
+                pix = doc[i].get_pixmap(dpi=200)
+                img_bytes = pix.tobytes("png")
+                result, _ = ocr(img_bytes)
+                if result:
+                    lines = [item[1] for item in result]
+                    parts.append(f"--- 第 {i + 1} 页（OCR）---\n" + "\n".join(lines))
+            if not parts:
+                return None, "页面渲染成功但未识别出文字"
+            return "\n".join(parts), None
+        finally:
+            doc.close()
     except Exception as e:
         return None, f"OCR 失败: {e}"
 
@@ -615,15 +617,17 @@ def _extract_text_with_fitz(file_path, max_pages, password=None):
     try:
         import pymupdf as fitz
         doc = fitz.open(file_path)
-        if doc.needs_pass and password:
-            doc.authenticate(password or "")
-        parts = []
-        for i in range(min(max_pages, len(doc))):
-            t = doc[i].get_text().strip()
-            if t:
-                parts.append(f"--- 第 {i + 1} 页 ---\n{t[:500]}")
-        doc.close()
-        return "\n".join(parts)
+        try:
+            if doc.needs_pass and password:
+                doc.authenticate(password or "")
+            parts = []
+            for i in range(min(max_pages, len(doc))):
+                t = doc[i].get_text().strip()
+                if t:
+                    parts.append(f"--- 第 {i + 1} 页 ---\n{t[:500]}")
+            return "\n".join(parts)
+        finally:
+            doc.close()
     except Exception:
         return ""
 

@@ -123,7 +123,10 @@ def _extract_text(path):
         try:
             import pymupdf as fitz
             doc = fitz.open(path)
-            return "\n".join(p.get_text() for p in doc)
+            try:
+                return "\n".join(p.get_text() for p in doc)
+            finally:
+                doc.close()  # 确保句柄释放，避免反复添加 PDF 泄漏文件句柄
         except Exception:
             return ""
     if ext == ".docx":
