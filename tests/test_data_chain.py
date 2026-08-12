@@ -97,3 +97,34 @@ def test_corrupt_tracked_backed_up(tmp_path):
     backups = [x for x in dc.CHAIN_DIR.glob("tracked.corrupt-*.json")]
     assert backups
     shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+
+
+def test_concurrent_multi_file_records(tmp_path):
+    """多线程并发记录独立文件：锁串行正确，全部记录且链完整。"""
+    import threading
+
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
+    files = [str(tmp_path / f"f{i}.txt") for i in range(20)]
+    for p in files:
+        _write(p, "v0\n")
+        dc.record_if_changed(p)
+
+    errors = []
+
+    def worker(i):
+        try:
+            _write(files[i], "v0\nv1\n")
+            dc.record_if_changed(files[i])
+        except Exception as e:
+            errors.append(str(e))
+
+    ths = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    [t.start() for t in ths]
+    [t.join() for t in ths]
+
+    assert not errors, errors[:3]
+    recs = dc._load_ledger()["records"]
+    assert len(recs) == 40, f"记录数 {len(recs)}"
+    assert all(r["index"] == i for i, r in enumerate(recs))
+    assert "✅" in dc.verify(quick=True)
+    shutil.rmtree(dc.CHAIN_DIR, ignore_errors=True)
