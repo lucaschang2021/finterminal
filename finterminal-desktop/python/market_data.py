@@ -152,6 +152,33 @@ def _strip_prefix(symbol):
     return re.sub(r"^(sh|sz|bj|hk|us)", "", symbol, flags=re.I)
 
 
+def _search_symbol(keyword):
+    """通过腾讯联想搜索把中文名称/拼音转成行情代码，返回 (code, name) 或 None。
+    优先普通股票（GP-A / GP），跳过基金、指数、期权等。"""
+    import urllib.parse
+    import urllib.request
+    url = "https://smartbox.gtimg.cn/s3/?v=2&q=" + urllib.parse.quote(keyword.strip()) + "&t=all"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com/"})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        raw = resp.read().decode("gbk", errors="replace")
+    m = re.search(r'v_hint="(.*)"', raw)
+    if not m:
+        return None
+    for item in m.group(1).split("^"):
+        parts = item.split("~")
+        if len(parts) < 5:
+            continue
+        market, code, name, _pinyin, kind = parts[:5]
+        if kind not in ("GP-A", "GP"):
+            continue  # 跳过基金/指数/期权等
+        if market == "us":
+            # 美股 ticker 大写，去掉 .oq/.n/.ps 等后缀
+            ticker = code.split(".")[0].upper()
+            return f"us{ticker}", name
+        return f"{market}{code}", name
+    return None
+
+
 def _ak_quote(symbol):
     """AkShare（东方财富）实时行情回退。"""
     import akshare as ak
@@ -209,8 +236,20 @@ def _plugin_call(kind, symbol, *args, **kwargs):
     return None
 
 
+def _resolve_symbol(symbol):
+    """把中文名称/拼音解析成行情代码；已是代码则原样返回。"""
+    symbol = str(symbol).strip()
+    if any(ord(c) > 127 for c in symbol):
+        hit = _search_symbol(symbol)
+        if hit:
+            return hit[0]
+        raise ValueError(f"未找到股票「{symbol}」，请尝试输入代码（如 sh600519 / 600519 / usAAPL）")
+    return symbol
+
+
 def quote(symbol, use_cache=True):
     """获取实时行情（带 30 秒本地缓存）。返回字典：名称、现价、涨跌幅、成交量等。"""
+    symbol = _resolve_symbol(symbol)
     key = f"quote:{symbol}"
     if use_cache:
         cached = _cache_get(key, 30)
@@ -261,6 +300,7 @@ _PERIOD_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
 def kline(symbol, days=60, period="daily", use_cache=True):
     """获取K线（前复权，支持 daily/weekly/monthly，带 1 小时缓存）。
     返回 DataFrame：日期/开盘/收盘/最高/最低/成交量。"""
+    symbol = _resolve_symbol(symbol)
     key = f"kline:{symbol}:{days}:{period}"
     if use_cache:
         cached = _cache_get(key, 3600)

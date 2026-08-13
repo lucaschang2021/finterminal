@@ -24,6 +24,14 @@ def test_normalize_symbol():
     assert md._normalize_symbol("AAPL") == "shAAPL"  # 未识别前缀默认 sh，交由回退处理
 
 
+def test_resolve_symbol_ascii_passthrough():
+    """ASCII 代码原样返回，不触发联网搜索。"""
+    assert md._resolve_symbol("sh600519") == "sh600519"
+    assert md._resolve_symbol("usAAPL") == "usAAPL"
+    assert md._resolve_symbol("600036") == "600036"
+    assert md._resolve_symbol("  hk00700  ") == "hk00700"
+
+
 def test_indicators():
     dates = pd.date_range("2026-01-01", periods=80, freq="D").strftime("%Y-%m-%d")
     close = np.linspace(100, 130, 80)

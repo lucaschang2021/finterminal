@@ -64,6 +64,10 @@ def main():
     cmd += ["--collect-binaries", "chromadb"]
     cmd += ["--collect-binaries", "chromadb_rust_bindings"]
     cmd += ["--collect-data", "chromadb"]
+    # akshare 行情回退源需要数据文件（calendar.json 等），否则打包版报
+    # "No such file or directory: .../akshare/file_fold/calendar.json"
+    cmd += ["--collect-data", "akshare"]
+    cmd += ["--collect-submodules", "akshare"]
     for m in COPY_METADATA:
         cmd += ["--copy-metadata", m]
     cmd.append(str(PYTHON_DIR / "run_server.py"))
