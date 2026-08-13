@@ -18,6 +18,16 @@ CHART_DIR = Path(m.__file__).resolve().parent / "charts"
 
 app = FastAPI(title="FinTerminal API", version="0.1.0")
 
+# 由 run_server.py 注入 uvicorn.Server 实例；/api/shutdown 通过它触发优雅退出，
+# 让 PyInstaller onefile 在进程正常结束前清理 _MEI* 临时解压目录（避免残留累积）。
+_server = None
+
+
+def set_server(server):
+    global _server
+    _server = server
+
+
 app.add_middleware(
     CORSMiddleware,
     # 仅绑定 127.0.0.1 的本地回环服务，无 Cookie 会话凭证；
@@ -27,6 +37,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """优雅关闭后端：请求 uvicorn 退出，进程正常结束以触发 PyInstaller 清理。"""
+    import threading
+
+    def _stop():
+        try:
+            if _server is not None:
+                _server.should_exit = True
+            else:
+                import os
+                os._exit(0)
+        except Exception:
+            import os
+            os._exit(0)
+
+    threading.Thread(target=_stop, daemon=True).start()
+    return _ok(text="正在关闭后端")
 
 
 def _ok(data=None, text=None):

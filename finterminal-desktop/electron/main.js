@@ -107,6 +107,57 @@ function killProcessTree(pid) {
   }
 }
 
+/**
+ * 优雅关闭后端：先请求 /api/shutdown，让 PyInstaller onefile 正常结束并清理
+ * _MEI* 临时解压目录；等待数秒后若仍未退出，再强杀兜底。
+ */
+function shutdownBackendGracefully() {
+  const proc = backendProc
+  if (!proc || !proc.pid) return
+  const port = backendPort
+  const http = require('http')
+  const req = http.request(
+    { host: '127.0.0.1', port, path: '/api/shutdown', method: 'POST', timeout: 3000 },
+    (res) => { res.resume() }
+  )
+  req.on('error', () => {})
+  req.on('timeout', () => { req.destroy() })
+  req.end()
+  // 等待后端自行退出（清理 _MEI*），最长 6 秒，超时强杀
+  const deadline = Date.now() + 6000
+  const timer = setInterval(() => {
+    const exited = proc.exitCode !== null || proc.killed
+    if (exited || Date.now() > deadline) {
+      clearInterval(timer)
+      if (!exited) killProcessTree(proc.pid)
+    }
+  }, 300)
+}
+
+/** 启动时兜底清理 Temp 下残留的 PyInstaller/便携版解压目录（_MEI* / 3H*） */
+function cleanupTempExtractions() {
+  try {
+    const fs = require('fs')
+    const os = require('os')
+    const tmp = fs.realpathSync(os.tmpdir())
+    const now = Date.now()
+    for (const name of fs.readdirSync(tmp)) {
+      if (!/^(_MEI|3H)/.test(name)) continue
+      const full = path.join(tmp, name)
+      let st = null
+      try { st = fs.statSync(full) } catch { continue }
+      if (!st.isDirectory()) continue
+      // 只清理超过 1 小时的目录，避免误删正在运行的其他实例
+      if (now - st.mtimeMs > 3600 * 1000) {
+        fs.rmSync(full, { recursive: true, force: true })
+        log('清理残留解压目录:', full)
+      }
+    }
+  } catch (e) {
+    log('清理残留解压目录失败:', e.message)
+  }
+}
+
 /** 启动 Python 后端子进程 */
 async function startBackend() {
   const pythonDir = app.isPackaged
@@ -207,6 +258,7 @@ ipcMain.handle('backend:info', () => ({
 
 app.whenReady().then(async () => {
   try {
+    cleanupTempExtractions()
     const port = await startBackend()
     createWindow(port)
   } catch (e) {
@@ -227,5 +279,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  killProcessTree(backendProc ? backendProc.pid : null)
+  shutdownBackendGracefully()
 })

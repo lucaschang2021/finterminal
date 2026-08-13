@@ -23,7 +23,11 @@ def main():
         data_dir.mkdir(parents=True, exist_ok=True)
         os.environ["FIN_DATA_DIR"] = str(data_dir)
     import api_server
-    uvicorn.run(api_server.app, host="127.0.0.1", port=port, log_level="warning")
+    # 显式创建 Server，并把实例注入 api_server，使 /api/shutdown 能触发优雅退出
+    # （进程正常结束 → PyInstaller 清理 _MEI* 临时目录，避免 Temp 残留累积）
+    server = uvicorn.Server(uvicorn.Config(api_server.app, host="127.0.0.1", port=port, log_level="warning"))
+    api_server.set_server(server)
+    server.run()
 
 
 if __name__ == "__main__":
