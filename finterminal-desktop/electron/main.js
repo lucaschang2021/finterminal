@@ -58,10 +58,11 @@ function findFreePort(start) {
   })
 }
 
-/** 等待后端 /api/health 就绪（最长 30s） */
-function waitBackendReady(port, timeoutMs = 30000) {
+/** 等待后端 /api/health 就绪（最长 120s：400MB onefile 冷启动 + 杀软扫描可能较慢） */
+function waitBackendReady(port, timeoutMs = 120000) {
   const started = Date.now()
   return new Promise((resolve, reject) => {
+    let lastLog = 0
     const probe = () => {
       const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 1500 }, (res) => {
         res.resume()
@@ -72,7 +73,20 @@ function waitBackendReady(port, timeoutMs = 30000) {
       req.on('timeout', () => { req.destroy(); retry() })
     }
     const retry = () => {
-      if (Date.now() - started > timeoutMs) return reject(new Error('后端启动超时'))
+      if (Date.now() - started > timeoutMs) {
+        return reject(new Error(
+          `后端启动超时（超过 ${Math.round(timeoutMs / 1000)} 秒）\n` +
+          '可能原因：\n' +
+          '1. 首次启动需解压约 400MB 后端并加载依赖，杀毒软件扫描时会明显变慢\n' +
+          '2. 存在残留的后端进程占用了端口（可关闭所有 FinTerminal 进程后重试）\n' +
+          '3. 磁盘或内存资源紧张\n' +
+          '请稍后重试；若持续超时，联系开发者查看后端日志。'
+        ))
+      }
+      if (Date.now() - lastLog > 5000) {
+        log(`后端启动中… ${Math.round((Date.now() - started) / 1000)}s`)
+        lastLog = Date.now()
+      }
       setTimeout(probe, 800)
     }
     probe()
