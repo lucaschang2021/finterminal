@@ -44,7 +44,8 @@ export const api = {
     request<ApiResult>(`/search?keyword=${encodeURIComponent(keyword)}&directory=${encodeURIComponent(directory)}&recursive=${recursive}`),
   detect: (path: string) => request<ApiResult>(`/detect?path=${encodeURIComponent(path)}`),
   read: (path: string) => request<ApiResult>(`/read?path=${encodeURIComponent(path)}`),
-  readApi: (code: string) => request<ApiResult>(`/read?source=api&path=${encodeURIComponent(code)}`),
+  readApi: (code: string, fresh = true) =>
+    request<ApiResult>(`/read?source=api&fresh=${fresh ? 1 : 0}&path=${encodeURIComponent(code)}`),
   columns: (path: string) =>
     request<ApiResult<{ columns: string[]; numeric: string[] }>>(`/columns?path=${encodeURIComponent(path)}`),
   plotData: (params: Record<string, string>) =>

@@ -69,10 +69,10 @@ def detect(path: str):
 @app.get("/api/read")
 def read(path: str | None = None, source: str = "local", sheet_name: str | None = None,
          max_pages: int = 3, ocr: bool = True, password: str | None = None,
-         days: int = 60, period: str = "daily"):
+         days: int = 60, period: str = "daily", fresh: bool = False):
     try:
         if source == "api":
-            return _ok(text=m.read(file_path=path, source="api", days=days, period=period))
+            return _ok(text=m.read(file_path=path, source="api", days=days, period=period, fresh=fresh))
         return _ok(text=m.read(file_path=path, sheet_name=sheet_name, max_pages=max_pages,
                                ocr=ocr, password=password))
     except Exception as e:

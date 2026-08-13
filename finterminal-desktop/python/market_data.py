@@ -95,7 +95,22 @@ def _fetch_tencent(symbol):
         v = parts[i] if i < len(parts) else ""
         return v if v not in ("", "-") else None
 
-    return {
+    # 行情时间：A股为紧凑数字（20260813161452），港股为带斜杠格式（2026/08/13 16:08:17），
+    # 美股为带连字符格式（2026-08-13 10:39:19）
+    raw_time = parts[30] if len(parts) > 30 else ""
+    quote_time = None
+    for pat in (
+        r"(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})",                 # 20260813161452
+        r"(\d{4})/(\d{2})/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})",          # 2026/08/13 16:08:17
+        r"(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})",          # 2026-08-13 10:39:19
+    ):
+        mt = re.fullmatch(pat, raw_time.strip())
+        if mt:
+            quote_time = (f"{mt.group(1)}-{mt.group(2)}-{mt.group(3)} "
+                          f"{mt.group(4)}:{mt.group(5)}:{mt.group(6)}")
+            break
+
+    data = {
         "名称": parts[1],
         "代码": parts[2],
         "现价": num(3),
@@ -111,6 +126,9 @@ def _fetch_tencent(symbol):
         "市盈率": num(39),
         "总市值(亿)": num(45),
     }
+    if quote_time:
+        data["行情时间"] = quote_time
+    return data
 
 
 def _normalize_symbol(symbol):

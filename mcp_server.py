@@ -1743,22 +1743,23 @@ def ask(query: str):
 
 # ==================== Phase 7: 实时数据源 / 多模态 / RAG 知识库 ====================
 
-def _market_quote(symbol):
-    """实时行情：read(source="api", file_path=代码)。"""
+def _market_quote(symbol, fresh=False):
+    """实时行情：read(source="api", file_path=代码)。fresh=True 绕过本地缓存。"""
     if not symbol:
         return "❌ 请提供股票代码（如 sh600519 / 600519 / AAPL）"
     try:
-        data = market_data.quote(symbol)
+        data = market_data.quote(symbol, use_cache=not fresh)
         lines = [f"📈 实时行情 {data.get('名称', '')}（{data.get('代码', symbol)}）",
                  f"来源: {data.get('来源', '')}"]
-        if data.get("_cached"):
-            lines.append("（数据来自本地缓存，可能非最新）")
         for k, v in data.items():
-            if k in ("名称", "代码", "来源", "_cached"):
+            if k in ("名称", "代码", "来源", "_cached", "行情时间"):
                 continue
             if v is not None:
                 lines.append(f"  {k}: {v}")
-        lines.append(f"\n📌 来源：实时行情（{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}）")
+        qtime = data.get("行情时间")
+        if data.get("_cached"):
+            lines.append("  ⚠️ 数据来自本地缓存，可能非最新")
+        lines.append(f"\n📌 来源：实时行情（{qtime or datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}）")
         lines.append("如需历史研报分析，请回复：切换到历史数据")
         session = load_session()
         session["last_market_symbol"] = symbol
@@ -2302,7 +2303,7 @@ def _context_ops(session):
 def read(file_path: str = None, source: str = "local", sheet_name: str = None,
          max_pages: int = 3, ocr: bool = True, password: str = None,
          kline: bool = False, days: int = 60, period: str = "daily", cross_check: bool = False,
-         forecast: bool = False, horizon: int = 10, model: str = "auto"):
+         forecast: bool = False, horizon: int = 10, model: str = "auto", fresh: bool = False):
     """读取数据。source="local" 读本地文件（含图片视觉解析）；source="api" 查行情（file_path 填股票代码）；
     kline=True 返回历史K线（days 天数，period 可 daily/weekly/monthly）；cross_check=True 多源交叉验证；
     forecast=True 返回时序预测（model: linear/arima/ets/auto）。"""
@@ -2313,7 +2314,7 @@ def read(file_path: str = None, source: str = "local", sheet_name: str = None,
             return _market_cross_check(file_path)
         if kline:
             return _market_kline(file_path, days, period)
-        return _market_quote(file_path)
+        return _market_quote(file_path, fresh=fresh)
     if not file_path:
         return "❌ 请提供 file_path（本地文件路径），或使用 source='api' 查询行情"
     ext = Path(file_path).suffix.lower()
