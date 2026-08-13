@@ -14,9 +14,11 @@ reports/
 charts/
 cache/
 
-# 前端
+# 前端（旧版网页原型已归档）
 frontend/node_modules/
 frontend/dist/
+frontend-legacy/node_modules/
+frontend-legacy/dist/
 
 # Electron 桌面应用
 finterminal-desktop/node_modules/
