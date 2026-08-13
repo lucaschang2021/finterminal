@@ -28,6 +28,12 @@ HIDDEN_IMPORTS = [
     "pydantic",
     "sklearn",
     "openpyxl",
+    # 知识库（chromadb）运行时用字符串动态导入大量实现类
+    # （telemetry / api.rust / sqlite / executor 等），静态分析抓不到；
+    # 另外 chromadb_rust_bindings 是 .pyd 二进制，必须显式收集。
+    # 统一交给下面的 --collect-* 参数处理，此处保留 onnxruntime
+    # （ONNXMiniLM 嵌入模型依赖，之前也是缺失的）。
+    "onnxruntime",
 ]
 
 # importlib.metadata 运行时查询的包（fastmcp 等），必须把 dist-info 一并打包
@@ -39,6 +45,7 @@ COPY_METADATA = [
     "anyio",
     "starlette",
     "uvicorn",
+    "chromadb",
 ]
 
 
@@ -52,6 +59,11 @@ def main():
     ]
     for h in HIDDEN_IMPORTS:
         cmd += ["--hidden-import", h]
+    # chromadb 及其 Rust 绑定的完整收集：所有子模块 + 二进制 + 数据文件
+    cmd += ["--collect-submodules", "chromadb"]
+    cmd += ["--collect-binaries", "chromadb"]
+    cmd += ["--collect-binaries", "chromadb_rust_bindings"]
+    cmd += ["--collect-data", "chromadb"]
     for m in COPY_METADATA:
         cmd += ["--copy-metadata", m]
     cmd.append(str(PYTHON_DIR / "run_server.py"))
