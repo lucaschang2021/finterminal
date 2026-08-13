@@ -23,8 +23,6 @@ const EMERGE_DONE_AT = LOAD_SEC + 1.02 // 色块逐层浮现完成时间
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 const smooth = (v: number) => v * v * (3 - 2 * v)
-const easeInOutQuint = (v: number) =>
-  v < 0.5 ? 16 * v * v * v * v * v : 1 - Math.pow(-2 * v + 2, 5) / 2
 
 interface Stroke {
   x1: number
@@ -162,6 +160,9 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
   stageRef.current = stage
   const doneRef = useRef(false)
   const ringRef = useRef<HTMLCanvasElement>(null)
+  // 环流相位：连续累加，跨 idle→loading 不跳变（旋转平滑变缓再加速）
+  const phaseRef = useRef(0)
+  const prevTimeRef = useRef(0)
   const blocksRef = useRef<HTMLCanvasElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   const blocksReady = useRef(false)
@@ -369,13 +370,22 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (reduced) return
     let raf = 0
+    prevTimeRef.current = performance.now()
     const loop = () => {
       const now = performance.now()
+      const dt = Math.min(0.05, Math.max(0, (now - prevTimeRef.current) / 1000))
+      prevTimeRef.current = now
       if (stageRef.current === 'idle') {
-        drawRing(0.72, (now / 1000) * 0.5)
+        phaseRef.current += 0.5 * dt
+        drawRing(0.72, phaseRef.current)
       } else {
         const t = Math.max(0, (now - startRef.current) / 1000)
-        draw(t)
+        const ringP = clamp01(t / LOAD_SEC)
+        const coverP = clamp01((t - LOAD_SEC) / COVER_SEC)
+        // 按键后先微微变缓（0.5 → 0.35 圈/秒），再二次加速至 2.75 圈/秒
+        const rate = 0.35 + 2.4 * ringP * ringP
+        phaseRef.current += rate * dt
+        draw(t, phaseRef.current)
       }
       raf = requestAnimationFrame(loop)
     }
@@ -383,10 +393,10 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
     return () => cancelAnimationFrame(raf)
   }, [reduced])
 
-  function draw(t: number) {
+  function draw(t: number, phase: number) {
     const ringP = clamp01(t / LOAD_SEC)
     const coverP = clamp01((t - LOAD_SEC) / COVER_SEC)
-    drawRing((0.72 + 0.08 * ringP) * (1 - coverP), easeInOutQuint(ringP) * 4)
+    drawRing((0.72 + 0.08 * ringP) * (1 - coverP), phase)
     drawBlocks(t, coverP)
   }
 
