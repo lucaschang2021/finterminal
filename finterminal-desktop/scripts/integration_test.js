@@ -69,9 +69,24 @@ app.whenReady().then(async () => {
   })
 
   try {
-    await win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
-    await wait(9000) // 启动动画 5s + 淡出 + 主界面渲染
-    await shoot(win, 'it-01-app.png')
+    const startUrl = process.env.ELECTRON_START_URL || 'http://127.0.0.1:5173'
+    await win.loadURL(startUrl)
+    await wait(7500) // 启动动画 + 登录页
+    await shoot(win, 'it-01-login.png')
+
+    // 注入 demo 用户（remember）实现自动登录
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const users = JSON.parse(localStorage.getItem('finterminal_users') || '{}');
+        users['demo'] = { passHash: 'h1', remember: true, createdAt: Date.now() };
+        localStorage.setItem('finterminal_users', JSON.stringify(users));
+        localStorage.setItem('finterminal_current_user', 'demo');
+        location.reload();
+        return true;
+      })()
+    `)
+    await wait(9000) // 启动动画 5s + 主界面渲染
+    await shoot(win, 'it-02-app.png')
 
     // 主界面渲染检查
     const mainOk = await win.webContents.executeJavaScript(`

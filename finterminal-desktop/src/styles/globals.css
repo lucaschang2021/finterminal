@@ -39,8 +39,20 @@
   --bad: #B91C1C;
 }
 [data-mode='light'] .composer-glass {
-  border-color: rgba(15, 23, 42, 0.14);
-  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(15, 23, 42, 0.22);
+  box-shadow:
+    0 6px 24px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+[data-mode='light'] .composer-glass:focus-within {
+  border-color: rgba(15, 23, 42, 0.38);
+  box-shadow:
+    0 8px 32px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+[data-mode='light'] .composer-glass textarea::placeholder {
+  color: #4B5563;
 }
 [data-mode='light'] .glass-bubble-user {
   background: rgba(15, 23, 42, 0.06);
@@ -55,7 +67,7 @@
   background: rgba(15, 23, 42, 0.06);
 }
 [data-mode='light'] .d2-cta {
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  border: 1px solid rgba(15, 23, 42, 0.2);
 }
 
 /* 主题切换柔和过渡（仅切换瞬间生效） */
@@ -411,7 +423,6 @@ code, pre, .mono {
   --primary-foreground: 0 0% 11%;
   --secondary: 214 20% 18%;
   --secondary-foreground: 220 20% 90%;
-  --muted: 214 18% 14%;
   --muted-foreground: 215 10% 60%;
   --accent-color: 0 0% 20%;
   --accent-foreground: 220 20% 95%;

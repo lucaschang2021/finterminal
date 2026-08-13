@@ -1,0 +1,13 @@
+﻿const { app, BrowserWindow } = require('electron')
+const fs = require('fs')
+const path = require('path')
+app.whenReady().then(async () => {
+  const win = new BrowserWindow({ width: 512, height: 512, show: false, transparent: true, frame: false, hasShadow: false })
+  await win.loadFile(path.join(__dirname, '..', 'src', 'assets', 'diamond.svg'))
+  await new Promise(r => setTimeout(r, 1200))
+  const img = await win.webContents.capturePage()
+  const out = path.join(__dirname, '..', 'build', 'icon_rainbow.png')
+  fs.writeFileSync(out, img.toPNG())
+  console.log('saved', out, img.getSize())
+  app.exit(0)
+})
