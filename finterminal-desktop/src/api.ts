@@ -87,31 +87,43 @@ export function fileUrl(name: string): string {
 }
 
 /** SSE 流式对话：POST /ask/stream，按 delta 回调追加文本 */
-export async function streamAsk(query: string, onDelta: (delta: string) => void): Promise<void> {
-  const res = await fetch(`${apiBase}/ask/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  })
-  if (!res.ok || !res.body) throw new Error(`流式请求失败 (${res.status})`)
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buf += decoder.decode(value, { stream: true })
-    const frames = buf.split('\n\n')
-    buf = frames.pop() ?? ''
-    for (const frame of frames) {
-      if (!frame.startsWith('data: ')) continue
-      const payload = frame.slice(6).trim()
-      if (payload === '[DONE]') return
-      try {
-        const obj = JSON.parse(payload) as { delta?: string; done?: boolean }
-        if (obj.done) return
-        if (obj.delta) onDelta(obj.delta)
-      } catch { /* 忽略非 JSON 帧 */ }
+export async function streamAsk(query: string, onDelta: (delta: string) => void, timeoutMs = 120000): Promise<void> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${apiBase}/ask/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal: controller.signal,
+    })
+    if (!res.ok || !res.body) throw new Error(`流式请求失败 (${res.status})`)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const frames = buf.split('\n\n')
+      buf = frames.pop() ?? ''
+      for (const frame of frames) {
+        if (!frame.startsWith('data: ')) continue
+        const payload = frame.slice(6).trim()
+        if (payload === '[DONE]') return
+        try {
+          const obj = JSON.parse(payload) as { delta?: string; done?: boolean }
+          if (obj.done) return
+          if (obj.delta) onDelta(obj.delta)
+        } catch { /* 忽略非 JSON 帧 */ }
+      }
     }
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      throw new Error('请求超时（120 秒无响应），请稍后重试')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
   }
 }

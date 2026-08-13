@@ -882,7 +882,7 @@ def _ai_report_comment(summary_text):
     if err:
         return f"（AI 解读不可用：{err}）"
     try:
-        client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=60.0)
         resp = client.chat.completions.create(
             model=DEEPSEEK_MODEL,
             messages=[
@@ -1646,7 +1646,8 @@ def ask(query: str):
     try:
         client = openai.OpenAI(
             api_key=DEEPSEEK_API_KEY,
-            base_url=DEEPSEEK_BASE_URL
+            base_url=DEEPSEEK_BASE_URL,
+            timeout=60.0
         )
 
         system_prompt = f"""
@@ -1842,7 +1843,7 @@ def _vision_analyze(file_path):
                     "bmp": "image/bmp", "webp": "image/webp"}.get(ext, "image/png")
             with open(file_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
-            client = openai.OpenAI(api_key=vkey, base_url=vbase)
+            client = openai.OpenAI(api_key=vkey, base_url=vbase, timeout=60.0)
             resp = client.chat.completions.create(
                 model=vmodel,
                 messages=[{"role": "user", "content": [
@@ -1914,7 +1915,7 @@ def knowledge_fusion(query_text, symbol=None, top_k=3, use_local=False):
             err = _api_key_error()
             if err:
                 return err
-            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=60.0)
             resp = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[{"role": "system", "content": "你是金融分析师，请结合历史研报知识与当前行情，"
@@ -2066,7 +2067,7 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
             ai_input.append(f"研报({d['来源']}): {d['内容'][:200]}")
 
         try:
-            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+            client = openai.OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL, timeout=60.0)
             resp = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[

@@ -271,16 +271,32 @@ def _chunk_text(text: str, size: int = 14):
 
 @app.post("/api/ask/stream")
 def ask_stream(req: AskReq):
-    """SSE 流式对话：先执行完整 ask，再按块推送（打字机效果）。"""
+    """SSE 流式对话：立即返回流，后台执行 ask；执行期间推送状态帧，完成后再按块推送结果。
+    避免 DeepSeek 慢/挂起时前端长期停留在"思考中"。"""
     import json
+    import queue
+    import threading
 
-    def gen():
+    q: "queue.Queue" = queue.Queue()
+
+    def worker():
         try:
             result = m.ask(req.query)
         except Exception as e:
-            yield f"data: {json.dumps({'delta': f'❌ {e}', 'done': True}, ensure_ascii=False)}\n\n"
+            q.put(("done", f"❌ {e}"))
             return
-        for chunk in _chunk_text(result or ''):
+        q.put(("result", result or ""))
+
+    def gen():
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        # 状态帧：让前端立即知道任务在跑（前端忽略无 delta 的状态帧）
+        yield f"data: {json.dumps({'delta': '', 'status': 'thinking'}, ensure_ascii=False)}\n\n"
+        kind, payload = q.get()
+        if kind == "done":
+            yield f"data: {json.dumps({'delta': payload, 'done': True}, ensure_ascii=False)}\n\n"
+            return
+        for chunk in _chunk_text(payload):
             yield f"data: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
         yield f"data: {json.dumps({'delta': '', 'done': True}, ensure_ascii=False)}\n\n"
 
