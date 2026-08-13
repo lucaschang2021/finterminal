@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { Activity, LibraryBig, Waypoints } from 'lucide-react'
+import { Activity, LibraryBig, Pin, PinOff, Waypoints } from 'lucide-react'
 
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
@@ -92,7 +92,10 @@ export default function RightBoard() {
   const [kb, setKb] = useState('')
   const [ready, setReady] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [pinned, setPinned] = useState(false)
   const boardRef = useRef<HTMLDivElement>(null)
+  const show = open || pinned
 
   // 面板入场：依次从下方浮起
   useGSAP(() => {
@@ -109,7 +112,7 @@ export default function RightBoard() {
       )
     })
     return () => mm.revert()
-  }, { scope: boardRef, dependencies: [ready] })
+  }, { scope: boardRef, dependencies: [ready, show] })
 
   useEffect(() => {
     codeRef.current = code
@@ -151,42 +154,80 @@ export default function RightBoard() {
   }, [quote, chain, kb])
 
   return (
-    <aside
-      ref={boardRef}
-      className="relative z-10 h-full w-[280px] shrink-0 overflow-hidden border-l p-3 transition-all duration-600"
+    <div
+      className="relative z-10 h-full shrink-0 border-l"
       style={{
+        width: show ? 280 : 40,
         borderColor: 'var(--hairline)',
-        background: ready ? 'var(--glass-bg)' : 'transparent',
-        opacity: ready ? 1 : 0.4,
+        transition: 'width 0.5s cubic-bezier(0.32, 0.72, 0.32, 1), background 0.3s ease',
       }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => { if (!pinned) setOpen(false) }}
     >
-      <div className="rb-scroll h-full min-w-0 overflow-y-auto overflow-x-hidden pr-1">
-        <div className="w-full min-w-0 space-y-2.5">
-          <Panel title="实时行情" icon={<Activity className="h-4 w-4" strokeWidth={1.5} />} loading={loading}>
-            <div className="flex w-full min-w-0 gap-2">
-              <Input value={code} onChange={(e) => setCode(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && loadQuote(true)}
-                size={4}
-                placeholder="股票代码" className="glass-input h-9 min-w-0 flex-1 border-0 text-[13px]"
-                style={{ minWidth: 0 }} />
-              <Button size="sm" variant="secondary" onClick={() => loadQuote(true)} className="d2-cta h-9 shrink-0 whitespace-nowrap px-3 text-[13px]">查询</Button>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 text-[11px]" style={{ color: live ? 'var(--ok)' : 'var(--muted)' }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? 'var(--ok)' : 'rgba(255,255,255,0.2)' }} />
-              {live ? '盘中，自动刷新中（20s）' : '已收盘 / 休市，手动查询'}
-            </div>
-            {quote && <div className="rb-scroll mt-1 max-h-44 overflow-y-auto pr-1"><DataText text={stripEmoji(quote)} /></div>}
-          </Panel>
+      {/* 收起时的竖排把手 */}
+      {!show && (
+        <button
+          className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2.5 border-0 bg-transparent"
+          style={{ color: 'var(--muted)' }}
+          onClick={() => setOpen(true)}
+          title="展开看板"
+        >
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+            style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <Activity className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+          <span className="text-[11px] tracking-[0.18em]" style={{ writingMode: 'vertical-rl' }}>看板</span>
+        </button>
+      )}
 
-          <Panel title="数据链状态" icon={<Waypoints className="h-4 w-4" strokeWidth={1.5} />}>
-            {chain && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(chain)} /></div>}
-          </Panel>
+      {/* 看板内容（展开时显示） */}
+      <aside
+        ref={boardRef}
+        className="absolute inset-0 overflow-hidden p-3 transition-opacity duration-300"
+        style={{
+          background: ready ? 'var(--glass-bg)' : 'transparent',
+          opacity: show ? 1 : 0,
+          pointerEvents: show ? 'auto' : 'none',
+        }}
+      >
+        <div className="rb-scroll h-full min-w-0 overflow-y-auto overflow-x-hidden pr-1">
+          <div className="w-full min-w-0 space-y-2.5">
+            <Panel title="实时行情" icon={<Activity className="h-4 w-4" strokeWidth={1.5} />} loading={loading}>
+              <div className="flex w-full min-w-0 gap-2">
+                <Input value={code} onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadQuote(true)}
+                  size={4}
+                  placeholder="股票代码" className="glass-input h-9 min-w-0 flex-1 border-0 text-[13px]"
+                  style={{ minWidth: 0 }} />
+                <Button size="sm" variant="secondary" onClick={() => loadQuote(true)} className="d2-cta h-9 shrink-0 whitespace-nowrap px-3 text-[13px]">查询</Button>
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5 text-[11px]" style={{ color: live ? 'var(--ok)' : 'var(--muted)' }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? 'var(--ok)' : 'rgba(255,255,255,0.2)' }} />
+                {live ? '盘中，自动刷新中（20s）' : '已收盘 / 休市，手动查询'}
+              </div>
+              {quote && <div className="rb-scroll mt-1 max-h-44 overflow-y-auto pr-1"><DataText text={stripEmoji(quote)} /></div>}
+            </Panel>
 
-          <Panel title="知识库状态" icon={<LibraryBig className="h-4 w-4" strokeWidth={1.5} />}>
-            {kb && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(kb)} /></div>}
-          </Panel>
+            <Panel title="数据链状态" icon={<Waypoints className="h-4 w-4" strokeWidth={1.5} />}>
+              {chain && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(chain)} /></div>}
+            </Panel>
+
+            <Panel title="知识库状态" icon={<LibraryBig className="h-4 w-4" strokeWidth={1.5} />}>
+              {kb && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(kb)} /></div>}
+            </Panel>
+          </div>
         </div>
-      </div>
-    </aside>
+
+        {/* 固定/收起 */}
+        <button
+          className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border-0"
+          style={{ background: 'rgba(255,255,255,0.06)', color: pinned ? 'var(--brand-gold, #C9A84C)' : 'var(--muted)' }}
+          onClick={() => { setPinned((v) => !v); if (pinned) setOpen(false) }}
+          title={pinned ? '取消固定' : '固定看板'}
+        >
+          {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+        </button>
+      </aside>
+    </div>
   )
 }
