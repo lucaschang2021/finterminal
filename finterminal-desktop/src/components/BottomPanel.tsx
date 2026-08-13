@@ -7,6 +7,7 @@ import { api, streamAsk } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { stripEmoji } from '@/lib/utils'
 import EChart from './EChart'
@@ -191,20 +192,32 @@ function ChartDetail({ initialType }: { initialType?: string }) {
       <div className="w-64 shrink-0 space-y-2">
         <Input value={path} onChange={(e) => setPath(e.target.value)} onBlur={() => loadCols(path)}
           placeholder="数据文件路径" className="glass-input h-8 border-0 text-xs" />
-        <select value={chartType} onChange={(e) => setChartType(e.target.value)}
-          className="glass-input h-8 w-full rounded-md px-2 text-xs outline-none">
-          {CHART_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <Select value={chartType} onValueChange={setChartType}>
+          <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CHART_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+          </SelectContent>
+        </Select>
         {cols.columns.length > 0 && (
           <>
-            <select value={xCol} onChange={(e) => setXCol(e.target.value)}
-              className="glass-input h-8 w-full rounded-md px-2 text-xs outline-none">
-              {cols.columns.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select value={yCol} onChange={(e) => setYCol(e.target.value)}
-              className="glass-input h-8 w-full rounded-md px-2 text-xs outline-none">
-              {cols.numeric.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <Select value={xCol} onValueChange={setXCol}>
+              <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {cols.columns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={yCol} onValueChange={setYCol}>
+              <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {cols.numeric.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </>
         )}
         <Button size="sm" onClick={render} className="w-full">渲染</Button>
@@ -315,12 +328,16 @@ function StatsTab() {
       <div className="w-72 shrink-0 space-y-2">
         <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="数据文件路径"
           className="glass-input h-8 border-0 text-xs" />
-        <select value={analysis} onChange={(e) => setAnalysis(e.target.value)}
-          className="glass-input h-8 w-full rounded-md px-2 text-xs outline-none">
-          {['describe', 'correlation', 'groupby', 'regression', 'test', 'trend', 'vif', 'event', 'did', 'backtest', 'report'].map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
+        <Select value={analysis} onValueChange={setAnalysis}>
+          <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {['describe', 'correlation', 'groupby', 'regression', 'test', 'trend', 'vif', 'event', 'did', 'backtest', 'report'].map((t) => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="参数（分组列/自变量/事件日期/信号列）"
           className="glass-input h-8 border-0 text-xs" />
         <Button size="sm" onClick={run}>分析</Button>
