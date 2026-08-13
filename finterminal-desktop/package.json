@@ -10,8 +10,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k \"npm:dev\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_START_URL=http://127.0.0.1:5173 electron .\"",
-    "electron:build": "npm run build && electron-builder --win",
-    "backend:build": "python scripts/build_backend.py"
+    "electron:build": "npm run build && electron-builder --win && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cleanup-after-build.ps1",
+    "backend:build": "python scripts/build_backend.py && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cleanup-after-build.ps1"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
