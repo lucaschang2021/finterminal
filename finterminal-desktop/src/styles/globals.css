@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: dark;
   --bg: #212121;
   --bg-deep: #1A1A1A;
   --fg: #ECECF1;
@@ -28,6 +29,7 @@
 
 /* 浅色模式：界面表面颜色整体切换 */
 [data-mode='light'] {
+  color-scheme: light;
   --glass-border: rgba(15, 23, 42, 0.12);
   --rail-bg: rgba(255, 255, 255, 0.58);
   --composer-bg: rgba(255, 255, 255, 0.62);

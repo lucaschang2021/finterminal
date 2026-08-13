@@ -44,6 +44,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.style.setProperty('--flow-speed', `${Math.max(4, config.flowSpeed)}s`)
     root.style.setProperty('--flow-strength', `${Math.max(2, Math.min(30, config.flowStrength))}%`)
     root.dataset.mode = mode
+    root.style.colorScheme = mode === 'light' ? 'light' : 'dark'
     // 深浅模式基础色
     if (mode === 'light') {
       root.style.setProperty('--bg', '#F2F4F7')
