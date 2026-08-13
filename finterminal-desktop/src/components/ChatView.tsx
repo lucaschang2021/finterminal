@@ -323,7 +323,7 @@ export default function ChatView() {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="relative h-full">
-            <div className="mx-auto max-w-3xl px-5 py-5">
+            <div className="mx-auto max-w-5xl px-6 py-5">
               {messages.length === 0 && (
                 <div className="liquid-glass suggestions-card mb-8 p-5">
                   <div className="mb-3 text-sm font-medium">试试这样问：</div>
@@ -370,7 +370,7 @@ export default function ChatView() {
 
         {/* 打字框：液态玻璃 */}
         <div className="border-t px-4 py-2.5" style={{ borderColor: 'var(--hairline)' }}>
-          <div className="composer-wrap relative mx-auto max-w-3xl overflow-hidden rounded-2xl" style={{ borderRadius: 18 }}>
+          <div className="composer-wrap relative mx-auto max-w-5xl overflow-hidden rounded-2xl" style={{ borderRadius: 18 }}>
             <div
               className="composer-glass relative overflow-hidden"
               style={{
