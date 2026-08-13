@@ -119,8 +119,14 @@ def _normalize_symbol(symbol):
     if re.fullmatch(r"\d{6}", symbol):
         # 6 开头为沪市，其余为深市
         return ("sh" if symbol[0] in "569" else "sz") + symbol
-    if re.match(r"^(sh|sz|hk|us|bj)", symbol, re.I):
-        return symbol.lower()
+    m = re.match(r"^(sh|sz|hk|us|bj)(.+)$", symbol, re.I)
+    if m:
+        prefix, rest = m.group(1).lower(), m.group(2)
+        # 腾讯接口美股代码大小写敏感（usAAPL 有效、usaapl 无效）：
+        # 前缀小写、ticker 部分保持大写。
+        if prefix == "us":
+            return prefix + rest.upper()
+        return prefix + rest
     return "sh" + symbol
 
 
@@ -215,10 +221,11 @@ def _quote_fetch(symbol):
         # 回退2：yfinance（美股/港股等）
         try:
             import yfinance as yf
-            t = yf.Ticker(symbol)
+            # yfinance 不接受 sh/sz/hk/us 前缀，去掉后再查
+            t = yf.Ticker(_strip_prefix(symbol))
             info = t.fast_info
             return {
-                "名称": symbol, "代码": symbol, "现价": getattr(info, "last_price", None),
+                "名称": symbol, "代码": _strip_prefix(symbol), "现价": getattr(info, "last_price", None),
                 "昨收": getattr(info, "previous_close", None), "今开": getattr(info, "open", None),
                 "涨跌幅%": None, "成交量": getattr(info, "last_volume", None),
                 "来源": "yfinance",
@@ -281,7 +288,7 @@ def _kline_fetch(symbol, days=60, period="daily"):
         # 回退2：海外标的回退 yfinance（需可访问 Yahoo）
         try:
             import yfinance as yf
-            t = yf.Ticker(symbol)
+            t = yf.Ticker(_strip_prefix(symbol))
             h = t.history(period=f"{days}d")
             if h.empty:
                 raise ValueError("无历史数据")

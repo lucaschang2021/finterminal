@@ -14,6 +14,13 @@ def test_normalize_symbol():
     assert md._normalize_symbol("600519") == "sh600519"
     assert md._normalize_symbol("000858") == "sz000858"
     assert md._normalize_symbol("sh600519") == "sh600519"
+    assert md._normalize_symbol("sz000858") == "sz000858"
+    assert md._normalize_symbol("hk00700") == "hk00700"
+    # 腾讯接口美股代码大小写敏感：前缀小写、ticker 保持大写
+    assert md._normalize_symbol("usAAPL") == "usAAPL"
+    assert md._normalize_symbol("usaapl") == "usAAPL"
+    assert md._normalize_symbol("usMSFT") == "usMSFT"
+    assert md._normalize_symbol("bj430047") == "bj430047"
     assert md._normalize_symbol("AAPL") == "shAAPL"  # 未识别前缀默认 sh，交由回退处理
 
 
