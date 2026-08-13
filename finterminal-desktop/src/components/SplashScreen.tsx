@@ -382,8 +382,8 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
         const t = Math.max(0, (now - startRef.current) / 1000)
         const ringP = clamp01(t / LOAD_SEC)
         const coverP = clamp01((t - LOAD_SEC) / COVER_SEC)
-        // 按键后先微微变缓（0.5 → 0.35 圈/秒），再二次加速至 2.75 圈/秒
-        const rate = 0.35 + 2.4 * ringP * ringP
+        // 按键后先微微变缓（0.5 → 0.4 圈/秒），再二次加速至 5 圈/秒
+        const rate = 0.4 + 4.6 * ringP * ringP
         phaseRef.current += rate * dt
         draw(t, phaseRef.current)
       }
