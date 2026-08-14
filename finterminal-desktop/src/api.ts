@@ -5,12 +5,14 @@
  */
 
 let apiBase = '/api'
+let apiToken = ''
 
 export async function initApiBase(): Promise<void> {
   if (window.finterminal?.getBackendInfo) {
     try {
       const info = await window.finterminal.getBackendInfo()
       if (info?.apiBase) apiBase = info.apiBase
+      if (info?.token) apiToken = info.token
     } catch {
       // 保持默认 /api（浏览器开发模式）
     }
@@ -21,8 +23,16 @@ export function base(): string {
   return apiBase
 }
 
+/** 附加 API Token 鉴权头（Electron 生产模式后端启用 FIN_API_TOKEN 时） */
+function authHeaders(options?: RequestInit): RequestInit {
+  if (!apiToken) return options ?? {}
+  const headers = new Headers(options?.headers)
+  headers.set('Authorization', `Bearer ${apiToken}`)
+  return { ...options, headers }
+}
+
 async function request<T = unknown>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(apiBase + url, options)
+  const res = await fetch(apiBase + url, authHeaders(options))
   const body = await res.json().catch(() => ({ ok: false, error: '响应解析失败' }))
   if (!res.ok || (body as { ok?: boolean }).ok === false) {
     throw new Error((body as { error?: string }).error || `请求失败 (${res.status})`)
@@ -91,9 +101,11 @@ export async function streamAsk(query: string, onDelta: (delta: string) => void,
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiToken) headers.Authorization = `Bearer ${apiToken}`
     const res = await fetch(`${apiBase}/ask/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ query }),
       signal: controller.signal,
     })

@@ -12,10 +12,12 @@ const { spawn, execFile } = require('child_process')
 const path = require('path')
 const net = require('net')
 const http = require('http')
+const crypto = require('crypto')
 
 const DEFAULT_PORT = 8000
 let backendProc = null
 let backendPort = DEFAULT_PORT
+let backendToken = null
 let mainWindow = null
 
 function log(...args) {
@@ -64,7 +66,8 @@ function waitBackendReady(port, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     let lastLog = 0
     const probe = () => {
-      const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 1500 }, (res) => {
+      const query = backendToken ? `?token=${encodeURIComponent(backendToken)}` : ''
+      const req = http.get({ host: '127.0.0.1', port, path: `/api/health${query}`, timeout: 1500 }, (res) => {
         res.resume()
         if (res.statusCode === 200) return resolve()
         retry()
@@ -174,11 +177,15 @@ async function startBackend() {
     backendPort = DEFAULT_PORT
   }
 
+  // 每次启动生成随机 API Token，注入后端并透传给渲染进程，
+  // 防止本机其它进程/网页调用后端 API（配合 127.0.0.1 回环绑定）
+  backendToken = crypto.randomBytes(32).toString('hex')
+
   const isDev = !app.isPackaged
   const spawnOpts = {
     cwd: pythonDir,
     windowsHide: true,
-    env: { ...process.env, FIN_BACKEND_PORT: String(backendPort) },
+    env: { ...process.env, FIN_BACKEND_PORT: String(backendPort), FIN_API_TOKEN: backendToken },
     stdio: isDev ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   }
 
@@ -250,10 +257,11 @@ function createWindow(port) {
   mainWindow.on('closed', () => { mainWindow = null })
 }
 
-// 渲染进程询问后端端口 / API 地址
+// 渲染进程询问后端端口 / API 地址 / Token（Token 用于 API 鉴权，勿记录到日志）
 ipcMain.handle('backend:info', () => ({
   port: backendPort,
   apiBase: `http://127.0.0.1:${backendPort}/api`,
+  token: backendToken,
 }))
 
 app.whenReady().then(async () => {

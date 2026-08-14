@@ -1,9 +1,6 @@
 import datetime
 import json
 import os
-import re
-import sys
-import tempfile
 import threading
 from pathlib import Path
 
@@ -16,8 +13,44 @@ import charts
 import data_chain
 import knowledge
 import market_data
+import paths
 import plugin_manager
 import vision_ocr
+
+# ==================== 拆分模块 re-export（保持原有调用点/测试兼容） ====================
+# 文件读取域（Phase 1/5）与意图路由域（Phase 8）已拆至 reader.py / routing.py，
+# 这里显式 re-export 以让 mcp_server 内部与外部测试继续按原名字调用。
+from reader import (  # noqa: F401
+    _analysis_df,
+    _chain_record,
+    _detect_columns,
+    _detect_csv_encoding,
+    _guess_date_column,
+    _load_data,
+    _maybe_decrypt,
+    _read_by_ext,
+    clean_data,
+    detect_file_type,
+    list_files,
+    read_csv,
+    read_excel,
+    read_file,
+    read_pdf,
+    read_word,
+)
+from routing import (  # noqa: F401 兼容导出
+    _detect_time_intent,
+    _extract_market_symbol,
+    _get_market_names,
+    _is_historical_report_query,
+    _is_market_query,
+    _is_research_query,
+    _is_vague_query,
+    _parse_ambiguity_choice,
+    _parse_file_index,
+    _parse_source_switch,
+    _pick_columns,
+)
 
 
 class _LazyPandas:
@@ -69,25 +102,9 @@ for _cname, (_csrc, _cfn) in plugin_manager.get_charts().items():
     charts.HANDLERS[_cname] = _cfn
 
 # ==================== 读取配置 ====================
-BASE_DIR = Path(__file__).resolve().parent
-
-
-def _data_dir():
-    """数据目录：开发模式=项目目录；打包模式（frozen）= FIN_DATA_DIR 或 exe 同级的 data/（可写、持久）。
-    onefile 打包后 __file__ 指向一次性解压目录，数据链/知识库/图表/会话必须落在持久位置。"""
-    env = os.environ.get("FIN_DATA_DIR")
-    if env:
-        d = Path(env)
-    elif getattr(sys, "frozen", False):
-        d = Path(sys.executable).resolve().parent / "data"
-    else:
-        d = BASE_DIR
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-DATA_DIR = _data_dir()
-CONFIG_FILE = DATA_DIR / "config.json"
+# 数据根目录统一走 paths.data_dir()（开发=项目目录；打包=FIN_DATA_DIR/exe 同级 data/）
+DATA_DIR = paths.DATA_DIR
+CONFIG_FILE = paths.CONFIG_FILE
 SESSION_FILE = str(DATA_DIR / "session.json")
 
 try:
@@ -214,17 +231,6 @@ mcp = FastMCP("FinTerminal")
 _SESSION_LOCK = threading.Lock()
 
 
-def _chain_record(file_path):
-    """数据链钩子：检测文件变化并写入历史记录。
-
-    在读取/绘图工具中调用，文件发生变化时自动生成新区块记录；
-    记录失败不影响主流程（只返回 None）。
-    """
-    try:
-        return data_chain.record_if_changed(file_path)
-    except Exception:
-        return None
-
 # ==================== Session 文件持久化 ====================
 
 def load_session():
@@ -254,628 +260,10 @@ def save_session(data):
         os.replace(tmp, SESSION_FILE)
 
 
-# ==================== Phase 1: 文件读取 ====================
-
-def list_files(path: str = "."):
-    if not os.path.exists(path):
-        return f"路径不存在: {path}"
-    items = os.listdir(path)
-    if not items:
-        return "该文件夹为空"
-    result = []
-    for f in items:
-        full = os.path.join(path, f)
-        is_dir = os.path.isdir(full)
-        result.append(f"{f} ({'文件夹' if is_dir else '文件'})")
-    return "\n".join(result)
-
-def read_file(path: str):
-    if not os.path.exists(path):
-        return f"文件不存在: {path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(path)
-    try:
-        # 与 read_csv 一致：自动检测编码，GBK 等文本也能正常读取
-        enc = _detect_csv_encoding(path)
-        with open(path, encoding=enc) as f:
-            content = f.read()
-        # 二进制检测：空字节或大量控制字符视为二进制文件
-        ctrl = sum(1 for ch in content if ord(ch) < 9 or 13 < ord(ch) < 32)
-        if "\x00" in content or (content and ctrl / len(content) > 0.3):
-            return f"无法以文本方式读取该文件（可能是二进制格式）: {path}"
-        if len(content) > 5000:
-            content = content[:5000] + "\n\n... (文件过长，仅显示前5000字符)"
-        return content
-    except (UnicodeDecodeError, OSError):
-        return f"无法以文本方式读取该文件（可能是二进制格式或目录）: {path}"
-
-def read_csv(file_path: str):
-    if not os.path.exists(file_path):
-        return f"❌ 文件不存在: {file_path}"
-    if os.path.getsize(file_path) == 0:
-        return f"❌ 文件为空: {file_path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(file_path)
-
-    encodings = ['utf-8-sig', 'utf-8', 'gbk', 'gb2312', 'latin-1']
-    detected_encoding = None
-    for enc in encodings:
-        try:
-            with open(file_path, encoding=enc) as f:
-                f.read()
-            detected_encoding = enc
-            break
-        except UnicodeDecodeError:
-            continue
-    if detected_encoding is None:
-        return "❌ 无法检测文件编码"
-
-    separators = [',', ';', '\t', '|']
-    detected_separator = None
-    try:
-        with open(file_path, encoding=detected_encoding) as f:
-            first_line = f.readline()
-            for sep in separators:
-                if sep in first_line:
-                    detected_separator = sep
-                    break
-        if detected_separator is None:
-            return "❌ 无法检测分隔符"
-    except Exception as e:
-        return f"❌ 读取失败: {e}"
-
-    try:
-        df = pd.read_csv(file_path, encoding=detected_encoding, sep=detected_separator, skip_blank_lines=True, engine='python')
-    except Exception as e:
-        return f"❌ 解析失败: {e}"
-
-    columns = [str(col) for col in df.columns]
-    missing_count = df.isnull().sum().sum()
-    preview = df.head(10)
-
-    result = f"📊 {file_path}\n"
-    result += f"编码: {detected_encoding} | 分隔符: {detected_separator}\n"
-    result += f"总行数: {len(df)} | 总列数: {len(df.columns)}\n"
-    result += f"列名: {', '.join(columns)}\n"
-    result += f"前10行:\n{preview.to_string()}"
-    if missing_count > 0:
-        result += f"\n⚠️ 检测到 {missing_count} 个缺失值"
-    return result
-
-def read_excel(file_path: str, sheet_name: str = None, password: str = None):
-    if not os.path.exists(file_path):
-        return f"❌ 文件不存在: {file_path}"
-    if os.path.getsize(file_path) == 0:
-        return f"❌ 文件为空: {file_path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(file_path)
-
-    orig_path = file_path
-    info = _inspect_file(file_path)
-    if info["encrypted"] and not password:
-        return "🔒 检测到加密的 Excel 文件，需要密码（调用时传 password 参数）"
-    if info["magic_ok"] is False and not info["encrypted"]:
-        return f"❌ 文件损坏或扩展名错误：文件头与 {info['ext']} 格式不匹配"
-
-    tmp_path = None
-    try:
-        if info["encrypted"]:
-            try:
-                file_path, tmp_path = _maybe_decrypt(orig_path, password)
-            except Exception as e:
-                return f"❌ 解密失败（密码可能错误）: {e}"
-
-        try:
-            xl = pd.ExcelFile(file_path)
-            sheet_names = xl.sheet_names
-            xl.close()  # 及时释放文件句柄，否则 Windows 上无法删除解密临时文件
-        except ImportError as e:
-            return f"❌ 读取 Excel 缺少依赖: {e}\n提示：.xls 文件需要 pip install xlrd"
-        except Exception as e:
-            return f"❌ 无法读取 Excel: {e}"
-
-        if sheet_name is not None and sheet_name not in sheet_names:
-            return f"❌ Sheet '{sheet_name}' 不存在。可用: {', '.join(sheet_names)}"
-        sheet_name = sheet_name or sheet_names[0]
-
-        try:
-            if str(file_path).lower().endswith(".xls"):
-                # openpyxl 不支持 .xls，.xls 由 pandas 自动选择 xlrd 解析
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                # .xlsx 用 openpyxl 保留公式字符串，避免公式单元格被读成 NaN
-                import excel_utils
-                df = excel_utils.read_xlsx(file_path, sheet=sheet_name)
-        except ImportError as e:
-            return f"❌ 读取 .xls 需要安装 xlrd：pip install xlrd（{e}）"
-        except Exception as e:
-            return f"❌ 读取失败: {e}"
-
-        col_names = [str(col) for col in df.columns]
-        missing_count = df.isnull().sum().sum()
-        preview = df.head(10)
-
-        result = f"📊 {orig_path}\n"
-        result += f"Sheet: {sheet_name}\n"
-        result += f"总行数: {len(df)} | 总列数: {len(df.columns)}\n"
-        result += f"列名: {', '.join(col_names)}\n"
-        result += f"前10行:\n{preview.to_string()}"
-        if missing_count > 0:
-            result += f"\n⚠️ 检测到 {missing_count} 个缺失值"
-        if len(sheet_names) > 1:
-            result += f"\n📋 所有 Sheet: {', '.join(sheet_names)}"
-        return result
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-def read_word(file_path: str, password: str = None):
-    try:
-        import docx
-    except ImportError:
-        return "需要安装 python-docx：pip install python-docx"
-    if not os.path.exists(file_path):
-        return f"文件不存在: {file_path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(file_path)
-
-    orig_path = file_path
-    info = _inspect_file(file_path)
-    if info["encrypted"] and not password:
-        return "🔒 检测到加密的 Word 文件，需要密码（调用时传 password 参数）"
-    if info["magic_ok"] is False and not info["encrypted"]:
-        return f"❌ 文件损坏或扩展名错误：文件头与 {info['ext']} 格式不匹配"
-
-    tmp_path = None
-    try:
-        if info["encrypted"]:
-            try:
-                file_path, tmp_path = _maybe_decrypt(orig_path, password)
-            except Exception as e:
-                return f"❌ 解密失败（密码可能错误）: {e}"
-        doc = docx.Document(file_path)
-        text = "\n".join([p.text for p in doc.paragraphs])
-        if len(text) > 3000:
-            text = text[:3000] + "\n\n... (内容过长，仅显示前3000字符)"
-        return f"文件: {orig_path}\n总段落数: {len(doc.paragraphs)}\n\n{text}"
-    except Exception as e:
-        return f"读取 Word 失败: {e}"
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-def read_pdf(file_path: str, max_pages: int = 3, ocr: bool = True, password: str = None):
-    if not os.path.exists(file_path):
-        return f"文件不存在: {file_path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(file_path)
-
-    # 加密与格式校验
-    try:
-        import pymupdf as fitz
-        doc = fitz.open(file_path)
-        if doc.needs_pass:
-            if password:
-                if not doc.authenticate(password or ""):
-                    doc.close()
-                    return "❌ 密码错误，无法打开该加密 PDF"
-            else:
-                doc.close()
-                return "🔒 该 PDF 已加密，需要密码（调用时传 password 参数）"
-        doc.close()
-    except Exception as e:
-        return f"❌ 文件损坏或不是有效 PDF（文件头检查失败）: {e}"
-
-    try:
-        import pdfplumber
-        with pdfplumber.open(file_path) as pdf:
-            total_pages = len(pdf.pages)
-            max_pages = max(1, min(max_pages, total_pages))
-            text = ""
-            tables_found = 0
-            for i, page in enumerate(pdf.pages[:max_pages]):
-                page_text = page.extract_text()
-                if page_text:
-                    text += f"\n--- 第 {i+1} 页 ---\n{page_text[:500]}"
-                tables = page.extract_tables()
-                if tables:
-                    tables_found += len(tables)
-            if not text.strip():
-                # 无文本层：可能是扫描件，尝试 OCR
-                if ocr:
-                    ocr_text, ocr_err = _ocr_pdf_pages(file_path, max_pages)
-                    if ocr_text:
-                        return (f"文件: {file_path}\n总页数: {total_pages}\n"
-                                f"未检测到文本层，已通过 OCR 识别（前 {max_pages} 页）:\n{ocr_text[:2000]}")
-                    msg = f"该 PDF 可能是扫描件，OCR 未识别出内容\n总页数: {total_pages}"
-                    return f"{msg}\n{ocr_err}" if ocr_err else msg
-                return f"该 PDF 可能是扫描件，未检测到文本（可传 ocr=True 尝试 OCR）\n总页数: {total_pages}"
-            result = f"文件: {file_path}\n总页数: {total_pages}\n检测到 {tables_found} 个表格（前 {max_pages} 页）\n\n文本预览:\n{text[:1500]}"
-            return result
-    except Exception as e:
-        if password:
-            text = _extract_text_with_fitz(file_path, max_pages, password=password)
-            if text:
-                return f"（已通过密码解密读取）\n文件: {file_path}\n\n{text[:1500]}"
-        return f"❌ 读取 PDF 失败: {e}"
-
-def detect_file_type(path: str):
-    ext = os.path.splitext(path)[1].lower()
-    type_map = {
-        '.txt': '文本文件 → read_file',
-        '.csv': 'CSV → read_csv',
-        '.xlsx': 'Excel → read_excel',
-        '.xls': 'Excel → read_excel',
-        '.json': 'JSON → read_file',
-        '.pdf': 'PDF → read_pdf',
-        '.py': 'Python → read_file',
-        '.md': 'Markdown → read_file',
-        '.docx': 'Word → read_word',
-    }
-    base = type_map.get(ext, f"未知格式: {ext}")
-    info = _inspect_file(path)
-    if not info["exists"]:
-        return f"❌ 文件不存在: {path}"
-    if info["size"] == 0:
-        return f"⚠️ 文件为空（0 字节）: {path}\n推荐读取: {base}"
-    if info["encrypted"]:
-        return (f"🔒 检测到加密文件（Office 加密容器）: {path}\n推荐读取: {base}\n"
-                f"可用 read_excel / read_word / plot_* 并传 password 参数解密读取")
-    if info["magic_ok"] is False:
-        return (f"⚠️ 格式不匹配：扩展名是 {ext}，但文件头不是{info.get('detected') or '对应格式'}，"
-                f"文件可能损坏或扩展名错误\n推荐读取: {base}")
-    if ext == ".pdf":
-        try:
-            import pymupdf as fitz
-            doc = fitz.open(path)
-            needs = doc.needs_pass
-            doc.close()
-            if needs:
-                return f"🔒 加密 PDF: {path}\n推荐读取: read_pdf（可传 password 参数）"
-        except Exception:
-            pass
-    return f"{base}\n格式校验: ✅ 文件头匹配（{info.get('detected', '通用格式')}），大小 {info['size']} 字节"
-
-
-# ==================== Phase 5: 文件体检、OCR 与数据清洗 ====================
-
-# 常见格式的文件头特征（magic bytes），用于校验扩展名与真实格式是否一致
-FORMAT_SIGNATURES = {
-    ".pdf": [(b"%PDF-", "PDF 文档")],
-    ".xlsx": [(b"PK\x03\x04", "Excel 2007+（ZIP 容器）")],
-    ".xls": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "Excel 97-2003（OLE 复合文档）")],
-    ".docx": [(b"PK\x03\x04", "Word 2007+（ZIP 容器）")],
-    ".doc": [(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "Word 97-2003（OLE 复合文档）")],
-    ".png": [(b"\x89PNG\r\n\x1a\n", "PNG 图片")],
-    ".jpg": [(b"\xff\xd8\xff", "JPEG 图片")],
-    ".jpeg": [(b"\xff\xd8\xff", "JPEG 图片")],
-}
-
-
-def _is_encrypted_ole(path):
-    """判断是否为加密的 Office 文件（OLE 复合文档含 EncryptionInfo 流）。"""
-    try:
-        with open(path, "rb") as f:
-            head = f.read(8)
-            if head != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-                return False
-        # 用 olefile 读取流名（OLE 流名是 UTF-16 编码，直接搜 ASCII 会漏判）
-        try:
-            import olefile
-            ole = olefile.OleFileIO(path)
-            try:
-                names = [n for n in ole.listdir() for n in n]
-            finally:
-                ole.close()
-            return any("encryptioninfo" in str(n).lower() for n in names)
-        except Exception:
-            # 非标准 OLE 结构时退回原始字节搜索，兼容 ASCII 与 UTF-16 两种编码
-            with open(path, "rb") as f:
-                blob = f.read(65536)
-            return (b"EncryptionInfo" in blob
-                    or b"E\x00n\x00c\x00r\x00y\x00p\x00t\x00i\x00o\x00n\x00I\x00n\x00f\x00o\x00" in blob)
-    except Exception:
-        return False
-
-
-def _inspect_file(path):
-    """按文件头检查：格式是否匹配、是否加密、大小是否为空。"""
-    info = {"exists": os.path.exists(path), "size": 0, "ext": "", "magic_ok": None, "detected": None, "encrypted": False}
-    if not info["exists"]:
-        return info
-    info["size"] = os.path.getsize(path)
-    info["ext"] = os.path.splitext(path)[1].lower()
-    if info["size"] == 0:
-        return info
-    try:
-        with open(path, "rb") as f:
-            head = f.read(16)
-    except Exception:
-        return info
-    info["encrypted"] = _is_encrypted_ole(path)
-    sigs = FORMAT_SIGNATURES.get(info["ext"], [])
-    if not sigs:
-        info["magic_ok"] = None
-        return info
-    for sig, name in sigs:
-        if head.startswith(sig):
-            info["magic_ok"] = True
-            info["detected"] = name
-            return info
-    info["magic_ok"] = False
-    return info
-
-
-def _is_encrypted_pdf(path):
-    """判断 PDF 是否加密。"""
-    try:
-        import pymupdf as fitz
-        doc = fitz.open(path)
-        needs = doc.needs_pass
-        doc.close()
-        return needs
-    except Exception:
-        return False
-
-
-def _decrypt_office_to_temp(file_path, password):
-    """用 msoffcrypto 解密加密的 Office 文件到临时文件，返回临时文件路径。"""
-    try:
-        import msoffcrypto
-    except ImportError as e:
-        raise RuntimeError(f"未安装解密依赖：pip install msoffcrypto-tool（{e}）") from e
-    ext = os.path.splitext(file_path)[1] or ".bin"
-    fd, tmp_path = tempfile.mkstemp(suffix=ext)
-    os.close(fd)
-    try:
-        with open(file_path, "rb") as src, open(tmp_path, "wb") as dst:
-            office = msoffcrypto.OfficeFile(src)
-            office.load_key(password=password, verify_password=True)
-            office.decrypt(dst)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise
-    return tmp_path
-
-
-def _maybe_decrypt(file_path, password):
-    """加密 Office 文件且提供了密码时解密到临时文件。
-
-    返回 (实际读取路径, 临时路径或 None)。未加密时原样返回；
-    加密但没给密码时抛出 ValueError。
-    """
-    info = _inspect_file(file_path)
-    if info["encrypted"] and password:
-        tmp_path = _decrypt_office_to_temp(file_path, password)
-        return tmp_path, tmp_path
-    if info["encrypted"]:
-        raise ValueError("文件已加密，需要提供 password 参数")
-    return file_path, None
-
-
-def _ocr_pdf_pages(file_path, max_pages):
-    """扫描件 OCR：PyMuPDF 渲染页面 + RapidOCR 识别。返回 (文本, 错误)。"""
-    try:
-        import pymupdf as fitz
-        from rapidocr_onnxruntime import RapidOCR
-    except ImportError as e:
-        return None, f"未安装 OCR 依赖：pip install pymupdf rapidocr-onnxruntime（{e}）"
-    try:
-        doc = fitz.open(file_path)
-        try:
-            ocr = RapidOCR()
-            parts = []
-            for i in range(min(max_pages, len(doc))):
-                pix = doc[i].get_pixmap(dpi=200)
-                img_bytes = pix.tobytes("png")
-                result, _ = ocr(img_bytes)
-                if result:
-                    lines = [item[1] for item in result]
-                    parts.append(f"--- 第 {i + 1} 页（OCR）---\n" + "\n".join(lines))
-            if not parts:
-                return None, "页面渲染成功但未识别出文字"
-            return "\n".join(parts), None
-        finally:
-            doc.close()
-    except Exception as e:
-        return None, f"OCR 失败: {e}"
-
-
-def _extract_text_with_fitz(file_path, max_pages, password=None):
-    """用 PyMuPDF 提取文本（加密 PDF 密码解密后的备选路径）。"""
-    try:
-        import pymupdf as fitz
-        doc = fitz.open(file_path)
-        try:
-            if doc.needs_pass and password:
-                doc.authenticate(password or "")
-            parts = []
-            for i in range(min(max_pages, len(doc))):
-                t = doc[i].get_text().strip()
-                if t:
-                    parts.append(f"--- 第 {i + 1} 页 ---\n{t[:500]}")
-            return "\n".join(parts)
-        finally:
-            doc.close()
-    except Exception:
-        return ""
-
-
-def clean_data(file_path: str, save: bool = False, password: str = None):
-    """清洗杂乱数据：去空行/空列、修剪空白、去重、规范化列名，并输出清洗报告。
-
-    参数:
-        file_path: CSV / TXT / Excel 文件。
-        save: True 时把清洗结果保存到项目 cleaned/ 目录（utf-8-sig）。
-    """
-    if not os.path.exists(file_path):
-        return f"❌ 文件不存在: {file_path}"
-    if os.path.getsize(file_path) == 0:
-        return f"❌ 文件为空: {file_path}"
-    # 数据链：自动记录该文件的变更历史
-    _chain_record(file_path)
-
-    ext = Path(file_path).suffix.lower()
-    tmp_path = None
-    try:
-        if ext in (".csv", ".txt"):
-            enc = _detect_csv_encoding(file_path)
-            with open(file_path, encoding=enc) as f:
-                first_line = f.readline()
-            sep = next((s for s in [",", ";", "\t", "|"] if s in first_line), ",")
-            # dtype=str 保留前导零等原始文本形态
-            df = pd.read_csv(file_path, encoding=enc, sep=sep, engine="python",
-                             skip_blank_lines=True, dtype=str)
-        elif ext in (".xlsx", ".xls"):
-            if _inspect_file(file_path)["encrypted"]:
-                if not password:
-                    return "🔒 检测到加密的 Excel 文件，需要密码（调用时传 password 参数）"
-                file_path, tmp_path = _maybe_decrypt(file_path, password)
-            if ext == ".xlsx":
-                # 保留公式字符串，避免公式单元格被读成 NaN 后误判为空行
-                import excel_utils
-                df = excel_utils.read_xlsx(file_path)
-            else:
-                df = pd.read_excel(file_path, dtype=str)
-            enc, sep = "（Excel 内部）", "—"
-        else:
-            return f"❌ 暂不支持清洗该格式: {ext}（支持 CSV / TXT / Excel）"
-    except Exception as e:
-        return f"❌ 读取失败（文件可能损坏或加密）: {e}"
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-    report = []
-    before_rows, before_cols = len(df), df.shape[1]
-    total_cells = int(df.size)
-
-    # 1) 列名规范化与去重
-    raw_cols = [str(c) for c in df.columns]
-    new_cols = []
-    seen = {}
-    for c in raw_cols:
-        cc = str(c).strip()
-        if not cc or cc.lower().startswith("unnamed:"):
-            cc = "列"
-        if cc in seen:
-            seen[cc] += 1
-            cc = f"{cc}_{seen[cc]}"
-        else:
-            seen[cc] = 1
-        new_cols.append(cc)
-    renamed = sum(1 for a, b in zip(raw_cols, new_cols) if a != b)
-    if renamed:
-        report.append(f"列名规范化/去重 {renamed} 个")
-    df.columns = new_cols
-
-    # 2) 去全空列
-    df = df.dropna(axis=1, how="all")
-    empty_cols = before_cols - df.shape[1]
-    if empty_cols:
-        report.append(f"去除全空列 {empty_cols} 个")
-
-    # 3) 去全空行
-    df = df.dropna(axis=0, how="all")
-    empty_rows = before_rows - len(df)
-    if empty_rows:
-        report.append(f"去除全空行 {empty_rows} 行")
-
-    # 4) 修剪单元格两侧空白
-    trimmed = 0
-    for col in df.columns:
-        if df[col].dtype == object:
-            s = df[col].astype(str)
-            trimmed += int(s.str.match(r"^\s|\s$").sum())
-            df[col] = s.str.strip()
-    if trimmed:
-        report.append(f"修剪空白单元格 {trimmed} 个")
-
-    # 4b) 中和公式注入（CSV Injection, CWE-1236）：
-    #     以 = + @ 开头，或 - 后接非数字（非纯负数）的单元格，
-    #     统一加单引号前缀，防止 Excel/WPS 打开清洗结果时执行恶意公式。
-    def _needs_neutralize(v):
-        if pd.isna(v):
-            return False
-        s = str(v)
-        if not s:
-            return False
-        if s[0] in ("=", "+", "@"):
-            return True
-        if s[0] == "-":
-            # 只有能解析为数值的（-5 / -0.3 / -1e3）才视为纯负数放行，
-            # 否则（-2+3 / -=x）视为公式注入，需要中和。
-            try:
-                float(s)
-                return False
-            except ValueError:
-                return True
-        return False
-
-    def _neutralize(v):
-        if _needs_neutralize(v):
-            return "'" + str(v)
-        return v
-
-    formula_mask = df.map(_needs_neutralize)
-    formula_count = int(formula_mask.sum().sum()) if not df.empty else 0
-    if formula_count:
-        df = df.map(_neutralize)
-        report.append(f"中和公式注入单元格 {formula_count} 个（= + @ 或非纯负数 - 开头，已加 ' 前缀）")
-
-    # 5) 去完全重复行
-    df = df.drop_duplicates().reset_index(drop=True)
-    dup_rows = before_rows - empty_rows - len(df)
-    if dup_rows:
-        report.append(f"去除完全重复行 {dup_rows} 行")
-
-    if not report:
-        report.append("数据本身比较干净，未发现明显问题")
-
-    lines = [
-        f"🧹 数据清洗报告: {file_path}",
-        f"编码: {enc} | 分隔符: {sep}",
-        f"原始: {total_cells} 个单元格（{before_rows} 行 × {before_cols} 列）→ 清洗后: {df.shape[0]} 行 × {df.shape[1]} 列",
-        "清理项: " + "、".join(report),
-        f"前10行:\n{df.head(10).to_string(index=False)}",
-    ]
-    if save:
-        CLEAN_DIR = DATA_DIR / "cleaned"
-        CLEAN_DIR.mkdir(exist_ok=True)
-        out_path = CLEAN_DIR / f"{Path(file_path).stem}_cleaned.csv"
-        df.to_csv(out_path, index=False, encoding="utf-8-sig")
-        lines.append(f"已保存: {out_path}")
-    return "\n".join(lines)
-
-
+# ==================== 文件读取 / 体检 / 清洗（已拆分至 reader.py） ====================
 # ==================== Phase 6: 统计分析与自动报告 ====================
 
-def _analysis_df(file_path, password):
-    """读取文件为 DataFrame 供统计分析（含解密与数据链记录）。返回 (df, tmp_path)。"""
-    tmp_path = None
-    try:
-        _chain_record(file_path)
-        eff_path, tmp_path = _maybe_decrypt(file_path, password)
-        return _load_data(eff_path), tmp_path
-    except Exception:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise
-
-
-def _guess_date_column(df):
-    """自动识别日期列（按常见列名优先，再尝试解析）。"""
-    for c in df.columns:
-        if str(c).lower() in ("date", "日期", "时间", "月份", "month", "time"):
-            try:
-                if pd.to_datetime(df[c], errors="coerce").notna().mean() > 0.8:
-                    return str(c)
-            except Exception:
-                pass
-    return None
-
-
+# ==================== 分析辅助（已拆分至 reader.py） ====================
 def _ai_report_comment(summary_text):
     """调用 DeepSeek 为分析结果撰写论文风格的结论与建议。"""
     err = _api_key_error()
@@ -1190,37 +578,7 @@ def _save_chart(fig, chart_type: str):
     return f"{save_path}{html_note}"
 
 
-def _detect_csv_encoding(file_path: str):
-    encodings = ['utf-8-sig', 'utf-8', 'gbk', 'gb2312', 'latin-1']
-    for enc in encodings:
-        try:
-            with open(file_path, encoding=enc) as f:
-                f.read()
-            return enc
-        except (UnicodeDecodeError, OSError):
-            continue
-    return 'utf-8-sig'
-
-
-def _load_data(file_path: str):
-    ext = Path(file_path).suffix.lower()
-    if ext == '.csv':
-        enc = _detect_csv_encoding(file_path)
-        with open(file_path, encoding=enc) as f:
-            first_line = f.readline()
-        sep = next((s for s in [',', ';', '\t', '|'] if s in first_line), ',')
-        return pd.read_csv(file_path, encoding=enc, sep=sep, engine='python')
-    elif ext in ['.xlsx', '.xls']:
-        try:
-            if ext == '.xlsx':
-                import excel_utils
-                return excel_utils.read_xlsx(file_path)
-            return pd.read_excel(file_path)
-        except ImportError as e:
-            raise ValueError(f"读取 .xls 需要安装 xlrd：pip install xlrd（{e}）") from e
-    else:
-        raise ValueError(f"不支持的文件类型: {ext or '(无扩展名)'}")
-
+# ==================== 编码探测 / 数据加载（已拆分至 reader.py） ====================
 def _plot(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
     tmp_path = None
@@ -1386,84 +744,7 @@ def search_file(keyword: str, directory: str = None, recursive: bool = False):
     return "❌ 未找到任何数据文件"
 
 
-def _detect_columns(file_path: str):
-    try:
-        df = _load_data(file_path)
-        columns = [str(c) for c in df.columns]
-        numeric = [str(c) for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-        return columns, numeric
-    except Exception:
-        return [], []
-
-
-def _pick_columns(query: str, columns, numeric_columns):
-    if not columns:
-        return None, None
-    matches = [c for c in columns if c and c in query]
-    if len(matches) >= 2:
-        return matches[0], matches[1]
-    if len(matches) == 1:
-        col = matches[0]
-        if col in numeric_columns:
-            x_candidates = [c for c in columns if c != col]
-            return (x_candidates[0] if x_candidates else col), col
-        y_candidates = [c for c in numeric_columns if c != col]
-        y = y_candidates[0] if y_candidates else (columns[1] if len(columns) > 1 else col)
-        return col, y
-    x = columns[0]
-    y_candidates = [c for c in numeric_columns if c != x]
-    y = y_candidates[0] if y_candidates else (columns[1] if len(columns) > 1 else x)
-    return x, y
-
-
-def _read_by_ext(file_path):
-    """按扩展名调用对应的读取工具，返回内容文本。"""
-    ext = Path(file_path).suffix.lower()
-    if ext == ".csv":
-        return read_csv(file_path)
-    elif ext in (".xlsx", ".xls"):
-        return read_excel(file_path)
-    elif ext == ".pdf":
-        return read_pdf(file_path)
-    elif ext == ".docx":
-        return read_word(file_path)
-    else:
-        return read_file(file_path)
-
-
-def _parse_file_index(query: str):
-    """从用户语句中解析文件序号，返回 0 基索引；无法判断时返回 None。"""
-    # 阿拉伯数字：第N个 / 用N个 / 选N个 / N号文件 / 文件N
-    patterns = (
-        r'第\s*(\d+)\s*个',
-        r'用\s*(\d+)\s*个',
-        r'选\s*(\d+)\s*个',
-        r'(\d+)\s*号\s*文件',
-        r'文件\s*(\d+)',
-        r'^\s*(\d+)\s*$',  # 整句就是数字（如 "1"），与行情歧义选择的裸数字风格保持一致
-    )
-    for pattern in patterns:
-        match = re.search(pattern, query)
-        if match:
-            return int(match.group(1)) - 1
-    # 中文数字：第X个 / 用X个 / 选X个
-    cn_num = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-    cn_match = re.search(r'(?:第|用|选)\s*([一二两三四五六七八九十]+)\s*个', query)
-    if cn_match:
-        word = cn_match.group(1)
-        if word == "十":
-            return 9
-        if "十" in word:
-            head, _, tail = word.partition("十")
-            return (cn_num.get(head, 1) * 10 + cn_num.get(tail, 0)) - 1
-        return (cn_num.get(word, 0) - 1) if word in cn_num else None
-    # 兜底：回复里只有纯数字时才当作序号（如直接回复 "1"），避免误判 "第1季度" 这类语句
-    stripped = query.strip()
-    if stripped.isdigit() and len(stripped) <= 3:
-        return int(stripped) - 1
-    return None
-
-
+# ==================== 列选择 / 序号解析（已拆分至 reader.py / routing.py） ====================
 def _dispatch_tool(tool_name, tool_args):
     """执行模型请求的工具调用，返回结果文本。"""
     if tool_name == "read":
@@ -2128,152 +1409,7 @@ def research_agent(topic, symbol=None, top_k=3, save=True, format="md"):
         return f"❌ 研究失败: {e}"
 
 
-# ==================== Phase 8: 意图路由与消歧 ====================
-
-_TIME_HISTORICAL_WORDS = ("历史", "过去", "财报", "研报", "年报", "季报", "去年", "今年",
-                          "往年", "近三年", "过去三年", "年度", "回顾")
-_TIME_REALTIME_WORDS = ("现在", "当前", "实时", "最新", "现价", "今天", "多少钱", "股价", "行情", "价格")
-_MARKET_VERBS = ("分析", "多少钱", "股价", "价格", "行情", "涨", "跌", "现价", "估值",
-                 "走势", "如何", "怎么样", "投资", "值不值", "贵", "便宜", "买", "卖")
-_SKIP_MARKET = ("添加", "入库", "清洗", "画", "统计", "报告", "生成", "读文件", "读取文件")
-
-_MARKET_NAMES = {
-    "贵州茅台": "sh600519", "茅台": "sh600519",
-    "五粮液": "sz000858",
-    "山西汾酒": "sh600809", "泸州老窖": "sz000568", "洋河股份": "sz002304",
-    "古井贡酒": "sz000596", "伊利股份": "sh600887", "海天味业": "sh603288",
-    "宁德时代": "sz300750",
-    "比亚迪": "sz002594",
-    "隆基绿能": "sh601012", "通威股份": "sh600438", "中芯国际": "sh688981",
-    "恒瑞医药": "sh600276", "药明康德": "sh603259", "迈瑞医疗": "sz300760",
-    "片仔癀": "sh600436", "云南白药": "sz000538", "长江电力": "sh600900",
-    "中国中免": "sh601888", "东方财富": "sz300059", "同花顺": "sz300033",
-    "中国平安": "sh601318", "中信证券": "sh600030", "招商银行": "sh600036",
-    "平安银行": "sz000001", "工商银行": "sh601398", "建设银行": "sh601939",
-    "农业银行": "sh601288", "中国银行": "sh601988", "交通银行": "sh601328",
-    "兴业银行": "sh601166", "浦发银行": "sh600000", "民生银行": "sh600016",
-    "万科": "sz000002", "保利发展": "sh600048", "美的集团": "sz000333",
-    "格力电器": "sz000651", "海尔智家": "sh600690",
-    "三一重工": "sh600031", "工业富联": "sh601138", "京东方": "sz000725",
-    "中国石油": "sh601857", "中国石化": "sh600028", "中国神华": "sh601088",
-    "中国移动": "sh600941", "中国联通": "sh600050", "中国电信": "sh601728",
-    "中远海控": "sh601919", "顺丰控股": "sz002352", "中国建筑": "sh601668",
-    "腾讯": "hk00700", "阿里巴巴": "hk09988", "阿里": "hk09988",
-    "美团": "hk03690", "小米": "hk01810", "快手": "hk01024", "网易": "hk09999",
-    "苹果": "AAPL", "特斯拉": "TSLA", "英伟达": "NVDA",
-    "微软": "MSFT", "谷歌": "GOOGL", "亚马逊": "AMZN", "Meta": "META",
-    "京东": "JD", "拼多多": "PDD", "百度": "BIDU",
-    "蔚来": "NIO", "理想": "LI", "小鹏": "XPEV",
-}
-
-
-def _get_market_names():
-    """合并内置股票名称表 + config.json 的 market_names 扩展（可覆盖默认）。"""
-    try:
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            cfg = json.load(f)
-        extra = (cfg or {}).get("market_names") or {}
-        names = dict(_MARKET_NAMES)
-        names.update(extra)
-        return names
-    except Exception:
-        return _MARKET_NAMES
-
-
-def _detect_time_intent(query):
-    """时间意图：历史关键词优先（避免“历史行情”被误判为实时）。"""
-    for w in _TIME_HISTORICAL_WORDS:
-        if w in query:
-            return "historical"
-    for w in _TIME_REALTIME_WORDS:
-        if w in query:
-            return "realtime"
-    return None
-
-
-def _extract_market_symbol(query):
-    """从语句中提取股票代码或常见股票名称。返回 (symbol, name) 或 (None, None)。"""
-    m = re.search(r"\b(?:sh|sz|hk|us|bj)\d{2,6}\b", query, re.I)
-    if m:
-        return m.group(0).lower(), m.group(0).upper()
-    m = re.search(r"\b(\d{6})\b", query)
-    if m:
-        return m.group(1), m.group(1)
-    for name, code in _get_market_names().items():
-        if name in query:
-            return code, name
-    return None, None
-
-
-def _is_market_query(query):
-    """判断是否属于行情类指令（避免误伤“添加到知识库/画图/清洗”等其它意图）。"""
-    if any(s in query for s in _SKIP_MARKET):
-        return False
-    symbol, _ = _extract_market_symbol(query)
-    if not symbol:
-        return False
-    return any(v in query for v in _MARKET_VERBS)
-
-
-def _is_historical_report_query(query):
-    """历史财报/研报类查询：命中股票 + 历史时间意图 + 财报类关键词时，
-    直接走 RAG 知识库，避免被通用 LLM 兜底或误判为实时行情。"""
-    if any(s in query for s in ("读", "打开", "搜索", "路径", "文件", "下载", "保存")):
-        return False
-    symbol, _ = _extract_market_symbol(query)
-    if not symbol:
-        return False
-    if _detect_time_intent(query) != "historical":
-        return False
-    return any(k in query for k in (
-        "财报", "年报", "半年报", "季报", "研报", "公告",
-        "历史行情", "历史数据", "历史走势", "基本面", "营收", "净利润", "毛利率",
-    ))
-
-
-def _is_research_query(query):
-    """研究报告类指令：命中关键词且能提取股票时触发 Agentic 研究代理。"""
-    if not any(k in query for k in ("研究报告", "投资报告", "出一份", "写报告", "研究一下")):
-        return False
-    symbol, _ = _extract_market_symbol(query)
-    return symbol is not None
-
-
-def _parse_ambiguity_choice(query):
-    """解析消歧选择：回复 1/2 或“实时/历史”。"""
-    q = query.strip()
-    if q in ("1", "2") or re.fullmatch(r"[12][.、)）]?", q):
-        return 1 if q[0] == "1" else 2
-    if re.search(r"(选|要|用|看)?\s*实时", q) and "历史" not in q:
-        return 1
-    if re.search(r"(选|要|用|看)?\s*历史", q) and "实时" not in q:
-        return 2
-    return None
-
-
-def _parse_source_switch(query):
-    """解析数据源切换指令（优先级高于普通指令）。"""
-    if re.search(r"切换\s*(到)?\s*(实时|行情|当前)|用实时|看实时", query):
-        return "realtime"
-    if re.search(r"切换\s*(到)?\s*(历史|研报|知识库|财报)|历史分析|看研报|用知识库", query):
-        return "historical"
-    return None
-
-
-def _is_vague_query(query):
-    """判断用户指令是否意图模糊（无明确操作词）。"""
-    q = query.strip()
-    if not q:
-        return True
-    action_words = ("读", "画", "分析", "统计", "搜索", "查", "清洗", "报告", "行情",
-                    "知识库", "回归", "相关", "趋势", "图", "打开", "添加", "切换", "生成")
-    if any(m in q for m in ("这个", "那个", "看看")) and not any(a in q for a in action_words):
-        return True
-    if len(q) <= 4 and not any(a in q for a in action_words):
-        return True
-    return False
-
-
+# ==================== 意图路由常量与纯函数（已拆分至 routing.py） ====================
 def _ask_market_confirmation(query, symbol, name):
     """时间意图不明确时返回候选确认，并记住待处理查询。"""
     session = load_session()

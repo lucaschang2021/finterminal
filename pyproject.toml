@@ -1,3 +1,96 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finterminal"
+version = "0.1.0"
+description = "本地金融数据终端 MCP 服务：数据读取 → 可视化 → 自然语言交互 → 数据链追溯"
+requires-python = ">=3.13"
+dependencies = [
+  # ---- 核心：服务启动与基础功能必需 ----
+  "fastmcp>=2.0",          # MCP 服务器
+  "fastapi>=0.115",        # REST API 桥
+  "uvicorn>=0.32",         # ASGI 服务器
+  "pydantic>=2.0",         # 请求模型
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "openpyxl>=3.1",         # .xlsx 读取
+  "xlrd>=2.0",             # .xls 读取
+  "pdfplumber>=0.11",      # PDF 文本/表格
+  "pymupdf>=1.24",         # PDF 加密校验 / 页面渲染
+  "python-docx>=1.1",      # Word 读取
+  "reportlab>=4.2",        # PDF 导出
+  "msoffcrypto-tool>=5.4", # 加密 Office 解密
+  "olefile>=0.47",         # OLE 结构检测（加密判断）
+  "cryptography>=43",      # AES-256-GCM（快照/知识库加密）
+  "keyring>=25",           # Windows 凭据管理器
+  "requests>=2.32",        # 行情/HTTP 客户端
+  "openai>=1.40",          # DeepSeek 对话
+  "matplotlib>=3.9",       # 图表
+  "scipy>=1.13",           # 统计检验
+  "statsmodels>=0.14",     # 回归 / ARIMA / ETS
+]
+
+[project.optional-dependencies]
+# ---- 按功能拆分的可选依赖：按需安装，避免全量 400MB ----
+market = [       # 实时行情增强：AkShare 交叉验证 / yfinance 海外标的
+  "akshare>=1.14",
+  "yfinance>=0.2.40",
+]
+kb = [           # RAG 知识库（向量检索 + BM25 混合）
+  "chromadb>=0.5",
+  "sentence-transformers>=3.0",
+  "rank-bm25>=0.2",
+  "jieba>=0.42",
+]
+vision = [       # 图片 / 扫描件 OCR
+  "rapidocr-onnxruntime>=1.4",
+]
+charts = [       # 交互式 HTML / 词云 / 矩形树图
+  "plotly>=5.24",
+  "wordcloud>=1.9",
+  "jieba>=0.42",
+  "squarify>=0.4",
+]
+llm = [          # 本地小模型推理（Qwen 等，依赖 torch 体积大）
+  "transformers>=4.40",
+]
+anchor = [       # 数据链 RFC3161 可信时间戳锚定
+  "rfc3161ng>=2.1",
+]
+dev = [          # 开发 / 测试 / 质量
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "pip-audit>=2.7",
+  "httpx>=0.27",
+]
+# 一键全量安装（等价旧 README 的全依赖清单）
+all = [
+  "akshare>=1.14",
+  "yfinance>=0.2.40",
+  "chromadb>=0.5",
+  "sentence-transformers>=3.0",
+  "rank-bm25>=0.2",
+  "jieba>=0.42",
+  "rapidocr-onnxruntime>=1.4",
+  "plotly>=5.24",
+  "wordcloud>=1.9",
+  "squarify>=0.4",
+  "transformers>=4.40",
+  "rfc3161ng>=2.1",
+]
+
+[tool.setuptools]
+# 平铺模块（非包结构），显式列出以支持 `pip install -e .[market]` 式安装
+py-modules = [
+  "mcp_server", "api_server", "reader", "routing", "paths",
+  "analysis", "charts", "chart_data", "data_chain", "knowledge",
+  "market_data", "plugin_manager", "backtest", "local_llm",
+  "vision_ocr", "export_utils", "excel_utils", "crypto_utils",
+  "set_api_key",
+]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 140

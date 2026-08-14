@@ -2,13 +2,17 @@
 
 复用 mcp_server 的 8 个工具内部函数，暴露为 REST 接口：
     python -m uvicorn api_server:app --host 127.0.0.1 --port 8000
+
+鉴权：设置环境变量 FIN_API_TOKEN 后启用 Bearer Token 校验（推荐 Electron
+生产模式由主进程生成随机 token 注入）；未设置时保持无鉴权（本机开发/兼容旧版）。
 """
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import mcp_server as m
@@ -22,10 +26,30 @@ app = FastAPI(title="FinTerminal API", version="0.1.0")
 # 让 PyInstaller onefile 在进程正常结束前清理 _MEI* 临时解压目录（避免残留累积）。
 _server = None
 
+# API Token：为空 = 不启用鉴权；非空 = 所有 /api/* 请求须带
+# `Authorization: Bearer <token>` 或 `?token=<token>`（Electron 主进程注入）。
+API_TOKEN = os.environ.get("FIN_API_TOKEN", "").strip()
+
 
 def set_server(server):
     global _server
     _server = server
+
+
+@app.middleware("http")
+async def _token_auth(request, call_next):
+    """统一的 Bearer Token 鉴权（FIN_API_TOKEN 非空时生效）。"""
+    if API_TOKEN and request.url.path.startswith("/api"):
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer ") and auth[7:].strip() == API_TOKEN:
+            return await call_next(request)
+        if request.query_params.get("token") == API_TOKEN:
+            return await call_next(request)
+        return JSONResponse(
+            {"ok": False, "error": "未授权：缺少或错误的 API Token（FIN_API_TOKEN）"},
+            status_code=401,
+        )
+    return await call_next(request)
 
 
 app.add_middleware(
@@ -277,7 +301,7 @@ def ask_stream(req: AskReq):
     import queue
     import threading
 
-    q: "queue.Queue" = queue.Queue()
+    q: queue.Queue = queue.Queue()
 
     def worker():
         try:

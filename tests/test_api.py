@@ -16,6 +16,15 @@ def client():
     return TestClient(api.app)
 
 
+@pytest.fixture(autouse=True)
+def _no_api_token():
+    """默认关闭 API Token，保持各测试兼容；token 专项测试自行启用。"""
+    old = api.API_TOKEN
+    api.API_TOKEN = ""
+    yield
+    api.API_TOKEN = old
+
+
 def _csv(tmp_path):
     p = str(tmp_path / "sales.csv")
     pd.DataFrame({"月份": [f"2026-{i:02d}" for i in range(1, 6)],
@@ -142,3 +151,33 @@ def test_api_key_endpoints(client, monkeypatch):
         assert client.get("/api/settings/api-key/status").json()["data"]["configured"] is False
     finally:
         m.DEEPSEEK_API_KEY = old
+
+
+def test_api_token_required_when_enabled(client):
+    """启用 FIN_API_TOKEN 后：无 token 401，错误 token 401，正确 token 放行。"""
+    api.API_TOKEN = "secret-token-123"
+    try:
+        # 无 token
+        r = client.get("/api/health")
+        assert r.status_code == 401
+        # 错误 token（query）
+        r = client.get("/api/health", params={"token": "wrong"})
+        assert r.status_code == 401
+        # 错误 token（header）
+        r = client.get("/api/health", headers={"Authorization": "Bearer wrong"})
+        assert r.status_code == 401
+        # 正确 token（query）
+        r = client.get("/api/health", params={"token": "secret-token-123"})
+        assert r.status_code == 200 and r.json()["ok"]
+        # 正确 token（header）
+        r = client.get("/api/health", headers={"Authorization": "Bearer secret-token-123"})
+        assert r.status_code == 200 and r.json()["ok"]
+    finally:
+        api.API_TOKEN = ""
+
+
+def test_api_token_disabled_by_default(client):
+    """未配置 FIN_API_TOKEN 时保持无鉴权（兼容开发模式）。"""
+    assert api.API_TOKEN == ""
+    r = client.get("/api/health")
+    assert r.status_code == 200 and r.json()["ok"]

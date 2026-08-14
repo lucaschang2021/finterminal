@@ -112,17 +112,12 @@ npm run electron:build   # 产出 release/：Setup 安装版 + Portable 单文�
 - **端口自适应**：8000 被占用时自动探测 8001-8020 空闲端口，preload 将实际端口注入前端
 - **数据落盘**：打包模式所有数据（数据链/知识库/缓存/图表/会话）写入 exe 同级的 `data/` 目录，可随包整体迁移
 - **干净退出**：退出先请求后端 `/api/shutdown` 优雅关闭，6 秒超时才强杀进程树；启动时兜底清理 Temp 中超过 1 小时的解压残留，避免磁盘膨胀
-- **安全**：渲染进程禁用 Node 集成，仅通过 preload 暴露白名单 API；`/api/file` 只允许访问 `charts/` 目录，防任意文件读取
+- **安全**：渲染进程禁用 Node 集成，仅通过 preload 暴露白名单 API；每次启动生成随机 `FIN_API_TOKEN` 注入后端，前端请求统一携带 Bearer Token，本机其它进程无法调用 API；`/api/file` 只允许访问 `charts/` 目录，防任意文件读取
 
 ## Web 前端（旧版网页原型，已归档）
 
-`frontend-legacy/` 为早期基于 React 18 + Vite + ECharts 的网页原型，已归档；当前交互界面以桌面应用为准。
+`frontend-legacy/` 为早期基于 React 18 + Vite + ECharts 的网页原型，已归档；当前交互界面以桌面应用为准。归档版通过 HTTP API 桥（`api_server.py`）复用 8 个工具的底层函数，结构参考如下（仅供历史追溯，不再维护）：
 
-`frontend/` 是基于 React 18 + Vite + ECharts 的交互式前端，通过 HTTP API 桥（`api_server.py`）复用 8 个工具的底层函数。
-
-- 启动后端 API：`python -m uvicorn api_server:app --host 127.0.0.1 --port 8000`
-- 启动前端开发：`cd frontend && npm install && npm run dev` → http://localhost:5173（/api 自动代理到 8000）
-- 生产构建：`cd frontend && npm run build`（输出 `frontend/dist`）
 - 图表渲染：前端调 `/api/plot/data` 获取 ECharts 结构化 option（line/bar/area/stacked/grouped/scatter/bubble/pie/donut/box/histogram），交互式渲染（缩放/悬停/图例切换）；`/api/plot/save` 仍可生成 PNG + 交互 HTML
 - 静态文件：`/api/file` 仅允许访问 `charts/` 目录（防任意文件读取）
 
@@ -170,11 +165,30 @@ data_chain/
 ### 依赖
 
 - Python 3.13+
-- pip 安装：`fastmcp pandas pdfplumber openai matplotlib python-docx openpyxl xlrd pymupdf rapidocr-onnxruntime pypdf msoffcrypto-tool scipy squarify chromadb sentence-transformers yfinance reportlab akshare wordcloud jieba rank_bm25 statsmodels pytest pip-audit`
+- 按功能拆分安装（pyproject.toml 的 optional-dependencies），推荐方式：
+
+```bash
+# 最小核心（MCP 服务 + 文件读取 + 统计 + 图表）
+pip install -e .
+
+# 按需启用功能组：行情增强 / 知识库 / OCR / 交互图表 / 本地小模型 / 时间戳锚定
+pip install -e ".[market]"     # AkShare 交叉验证 + yfinance 海外标的
+pip install -e ".[kb]"         # RAG 知识库（chromadb + 向量 + BM25）
+pip install -e ".[vision]"     # 图片 / 扫描件 OCR
+pip install -e ".[charts]"     # 交互式 HTML / 词云 / 矩形树图
+pip install -e ".[llm]"        # 本地小模型推理（transformers，体积大）
+pip install -e ".[anchor]"     # 数据链 RFC3161 可信时间戳锚定
+pip install -e ".[dev]"        # pytest / ruff / pip-audit
+
+# 等价旧版全量安装（体积最大，约 400MB）
+pip install -e ".[all]"
+```
 
 ### 测试
 
-- 单元测试：`python -m pytest tests/ -q`（48 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测）
+- 单元测试：`python -m pytest tests/ -q`（77 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测/API 鉴权）
+  - 测试环境自愈：basetemp 每次运行使用唯一时间戳目录并自动清理残留（`tests/conftest.py`），
+    即使 `.pytest-tmp*` 因 ACL 损坏或沙箱权限问题也不阻塞整轮测试
 - 依赖安全扫描：`python -m pip_audit`
 - 静态质量检查：`python -m ruff check .`（规则配置见 `pyproject.toml`，中文全角标点/紧凑风格已豁免）
 
@@ -221,25 +235,35 @@ data_chain/
 
 ```
 finterminal-mcp/
-├── mcp_server.py          # MCP 服务器主逻辑（12 个业务工具）
-├── data_chain.py          # 数据链模块（8 个 chain_* 工具）
-├── analysis.py            # 统计分析模块（7 个 stat_*/generate_report 工具）
-├── charts.py              # 图表模块（24 种图表）
-├── market_data.py         # 实时行情数据源（腾讯/yfinance）
+├── mcp_server.py          # MCP 服务器主逻辑（8 个对外工具 + ask 意图路由调度）
+├── reader.py              # 文件读取 / 体检 / OCR / 清洗（自 mcp_server 拆分）
+├── routing.py             # 意图路由与消歧纯函数（自 mcp_server 拆分）
+├── paths.py               # 共享路径逻辑（数据根目录 / 配置文件定位）
+├── data_chain.py          # 数据链模块（哈希链 + 快照 + 时间戳锚定）
+├── analysis.py            # 统计分析模块（描述/相关/回归/检验/趋势/事件研究/DID）
+├── charts.py              # 图表模块（27 种图表）
+├── chart_data.py          # ECharts 结构化数据（前端交互渲染）
+├── market_data.py         # 实时行情数据源（腾讯/AkShare/yfinance/插件回退 + 预测）
 ├── vision_ocr.py          # 多模态图片解析（OCR + 表格还原）
-├── knowledge.py           # RAG 知识库（chromadb + 向量嵌入）
+├── knowledge.py           # RAG 知识库（chromadb + 向量 + BM25 混合检索）
 ├── plugin_manager.py      # 插件加载器
 ├── plugins/               # 插件目录（example_plugin.py 为示例）
 ├── backtest.py            # 策略回测框架
 ├── local_llm.py           # 本地小模型推理（可选）
+├── export_utils.py        # Markdown → Word / PDF 导出
+├── excel_utils.py         # Excel 读取（保留公式字符串）
+├── crypto_utils.py        # AES-256-GCM 加密（知识库 / 快照）
+├── api_server.py          # FastAPI REST 桥（Electron 前端调用，支持 Bearer Token 鉴权）
+├── scripts/
+│   └── sync_backend.py    # 双副本去重：根目录 → finterminal-desktop/python/ + SHA-256 校验
 ├── finterminal-desktop/   # Electron 桌面应用（见上节）
 │   ├── electron/          # 主进程 + preload 脚本
 │   ├── src/               # React 前端（TypeScript）
-│   ├── python/            # Python 后端（PyInstaller 打包进 exe）
+│   ├── python/            # Python 后端副本（PyInstaller 打包进 exe，由 sync_backend.py 同步）
 │   ├── scripts/           # 后端打包 / 构建后清理脚本
 │   └── electron-builder.yml
 ├── frontend-legacy/       # 旧版网页原型（已归档）
-├── config.json            # API Key 配置
+├── config.json            # 配置（不含明文密钥）
 ├── session.json           # 会话状态
 ├── cline_mcp_settings.json# Cline 注册配置
 ├── charts/                # 图表输出
@@ -258,10 +282,25 @@ finterminal-mcp/
 
 ## 产品风险与注意事项
 
-- **MCP 服务无鉴权且可读任意路径**：仅限本机信任环境使用，切勿暴露到共享机器或公网
+- **API 鉴权**：桌面版 Electron 启动时为后端注入随机 `FIN_API_TOKEN`，渲染进程经 preload 获取并随请求携带 `Authorization: Bearer <token>`，本机其它进程无法直接调用 API；以 `python -m uvicorn api_server:app` 直接开发运行时未设置该环境变量则保持无鉴权（仅限本机信任环境，切勿暴露到共享机器或公网）
+- **MCP 服务可读任意路径**：MCP 工具按设计允许读取本机任意路径，仅限本机信任环境使用
 - **第三方接口依赖**：行情（腾讯/yfinance）与时间戳（freetsa.org）均为公开服务，无 SLA，可能变更、限流或不可达；关键决策前请交叉验证数据
 - **API Key 安全**：此前密钥曾在对话与文件中出现过，强烈建议前往 DeepSeek 平台轮换后执行 `python set_api_key.py sk-新密钥`
 - **加密默认关闭**：`encrypt_knowledge` / `encrypt_snapshots` 需手动开启，开启前已有数据为明文
 - **网络依赖**：实时行情/知识库融合/AI 结论/时间戳锚定均需联网；离线时行情与 AI 结论明确降级提示，研究报告会跳过不可用章节（数据章节仍可本地生成）
 - **AI 结论仅供研究参考**：所有 AI 生成内容（研报结论、融合分析、图片解析、报告评论）统一附带"非投资建议、请人工复核"风险提示；模型可能错误解读数据，关键决策前必须人工复核
 - **已知漏洞**：chromadb 1.5.9 存在 PYSEC-2026-311（暂无修复版本），仅用于本地向量检索，影响可控；pip 等其他漏洞已升级修复
+
+## 开发规范（双副本去重）
+
+仓库根目录与 `finterminal-desktop/python/` 各有一份 Python 后端（桌面版需自包含打包，
+不能用 junction/symlink）。约定：**根目录为唯一源码**，桌面副本由脚本生成并校验：
+
+```bash
+python scripts/sync_backend.py            # 同步：根目录 → finterminal-desktop/python/
+python scripts/sync_backend.py --check    # 校验一致性（不一致退出码 1，供 pre-commit/CI）
+```
+
+- `npm run backend:build` 已自动先执行同步，桌面版打包不会用到过期副本
+- 修改任何后端 `.py` 后，提交前运行 `python scripts/sync_backend.py --check`，或直接同步后一并提交
+- 桌面端特有文件（`run_server.py`、`requirements.txt`）不参与同步，保留在桌面端

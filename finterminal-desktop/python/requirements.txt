@@ -1,4 +1,6 @@
 # FinTerminal 后端核心依赖（pyinstaller 打包参考）
+# 注意：这是桌面端打包专用的全量依赖清单（对应根目录 pyproject.toml 的 `.[all]`）。
+# 根目录源码以 pyproject.toml 为准；本文件仅用于 PyInstaller 打包，不参与代码同步。
 fastapi>=0.115
 uvicorn>=0.32
 pandas>=2.2
