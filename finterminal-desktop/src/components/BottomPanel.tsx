@@ -243,10 +243,15 @@ function ChartDetail({ initialType }: { initialType?: string }) {
 }
 
 function ReportTab() {
-  const { t } = useI18n()
-  const [topic, setTopic] = useState(t('panel.reportTopic'))
+  const { t, lang } = useI18n()
+  const [topic, setTopic] = useState(() => t('panel.reportTopic'))
+  const untouched = useRef(true)
   const [result, setResult] = useState('')
   const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (untouched.current) setTopic(t('panel.reportTopic'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang])
   const run = () => {
     setBusy(true); setResult('')
     const id = Date.now()
@@ -257,7 +262,7 @@ function ReportTab() {
   return (
     <div className="flex h-full gap-3">
       <div className="w-72 shrink-0 space-y-2">
-        <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
+        <textarea value={topic} onChange={(e) => { untouched.current = false; setTopic(e.target.value) }} rows={4}
           className="glass-input w-full resize-none rounded-md p-2 text-xs outline-none" />
         <Button size="sm" onClick={run} disabled={busy}>{busy ? t('panel.generating') : t('panel.genReport')}</Button>
       </div>
@@ -269,7 +274,7 @@ function ReportTab() {
             icon={<FileText className="h-6 w-6" />}
             title={t('panel.reportGen')}
             desc={t('panel.reportGenDesc')}
-            actions={['Kweichow Moutai', 'Market quotes', 'Industry analysis']}
+            actions={[t('panel.reportAction1'), t('panel.reportAction2'), t('panel.reportAction3')]}
           />
         )}
       </ScrollArea>
@@ -339,8 +344,8 @@ function StatsTab() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {['describe', 'correlation', 'groupby', 'regression', 'test', 'trend', 'vif', 'event', 'did', 'backtest', 'report'].map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
+            {['describe', 'correlation', 'groupby', 'regression', 'test', 'trend', 'vif', 'event', 'did', 'backtest', 'report'].map((a) => (
+              <SelectItem key={a} value={a}>{a}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -356,7 +361,7 @@ function StatsTab() {
             icon={<PieChart className="h-6 w-6" />}
             title={t('panel.statsTitle')}
             desc={t('panel.statsDesc')}
-            actions={['Descriptive', 'Correlation', 'Regression', 'Event study']}
+            actions={[t('panel.statsAction1'), t('panel.statsAction2'), t('panel.statsAction3'), t('panel.statsAction4')]}
           />
         )}
       </ScrollArea>
