@@ -77,7 +77,46 @@
 
 `ask` 支持的说法示例：`用第1个`、`查看第1个`、`画贵州茅台的技术面图`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`（重复添加自动更新）、`查一下知识库：茅台的估值`、`列出知识库文档`、`清空知识库`、`写一份贵州茅台的研究报告`（Agentic 自主研究）、`给数据链盖时间戳`（chain anchor）、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
 
-## Web 前端（React + ECharts）
+## 桌面应用（Electron）
+
+除 MCP 服务外，FinTerminal 还提供开箱即用的 Windows 桌面版（`finterminal-desktop/`），双击 exe 即可运行，**无需安装 Python 或任何依赖**。
+
+技术栈：Electron 33 + React 18 + TypeScript + Vite + ECharts 6 + shadcn/ui + GSAP；Python 后端（FastAPI）经 PyInstaller 打包为单文件 exe，由 Electron 主进程自动拉起。
+
+界面特色：
+
+- **品牌启动动画**：彩虹双菱形图标 + Canvas 粒子流动/泼洒动画，平滑过渡到登录页
+- **液态玻璃风格**：磨砂玻璃 + 五彩流光暗流，深色基底；6 套主题预设 + 自定义主/辅色，深浅色按时间自动切换
+- **四区域布局**：左侧悬停滑出导航（对话/文件/图表/数据链/知识库/设置/导出）· 中央 ChatGPT 风格流式对话（SSE）· 右侧实时行情/数据链/知识库看板（抽屉式可收起）· 底部可拉出面板（图表详情/研报分析/数据链可视化/统计分析）
+- **多语言**：中文 / English 一键切换（设置页），选择持久化保存，重启保留
+
+开发运行：
+
+```bash
+cd finterminal-desktop
+npm install
+npm run electron:dev     # Vite dev + Electron，自动拉起 Python 后端
+```
+
+打包发布：
+
+```bash
+cd finterminal-desktop
+npm run backend:build    # PyInstaller 打包后端为单文件 exe
+npm run electron:build   # 产出 release/：Setup 安装版 + Portable 单文件版
+```
+
+架构要点：
+
+- **启动流程**：Electron 主进程 → 启动 Python 后端子进程（优先 `finterminal-backend.exe`，dev 模式走本机 Python）→ 等待 `/api/health` 就绪 → 加载前端（dev 加载 Vite，生产加载 `dist/`）→ 前端经 `http://127.0.0.1:<port>/api` 调用后端
+- **端口自适应**：8000 被占用时自动探测 8001-8020 空闲端口，preload 将实际端口注入前端
+- **数据落盘**：打包模式所有数据（数据链/知识库/缓存/图表/会话）写入 exe 同级的 `data/` 目录，可随包整体迁移
+- **干净退出**：退出先请求后端 `/api/shutdown` 优雅关闭，6 秒超时才强杀进程树；启动时兜底清理 Temp 中超过 1 小时的解压残留，避免磁盘膨胀
+- **安全**：渲染进程禁用 Node 集成，仅通过 preload 暴露白名单 API；`/api/file` 只允许访问 `charts/` 目录，防任意文件读取
+
+## Web 前端（旧版网页原型，已归档）
+
+`frontend-legacy/` 为早期基于 React 18 + Vite + ECharts 的网页原型，已归档；当前交互界面以桌面应用为准。
 
 `frontend/` 是基于 React 18 + Vite + ECharts 的交互式前端，通过 HTTP API 桥（`api_server.py`）复用 8 个工具的底层函数。
 
@@ -125,6 +164,8 @@ data_chain/
 ```
 
 ## 安装与运行
+
+> 桌面应用的使用方式见上文「桌面应用（Electron）」；以下为 MCP 服务的开发运行方式。
 
 ### 依赖
 
@@ -191,6 +232,13 @@ finterminal-mcp/
 ├── plugins/               # 插件目录（example_plugin.py 为示例）
 ├── backtest.py            # 策略回测框架
 ├── local_llm.py           # 本地小模型推理（可选）
+├── finterminal-desktop/   # Electron 桌面应用（见上节）
+│   ├── electron/          # 主进程 + preload 脚本
+│   ├── src/               # React 前端（TypeScript）
+│   ├── python/            # Python 后端（PyInstaller 打包进 exe）
+│   ├── scripts/           # 后端打包 / 构建后清理脚本
+│   └── electron-builder.yml
+├── frontend-legacy/       # 旧版网页原型（已归档）
 ├── config.json            # API Key 配置
 ├── session.json           # 会话状态
 ├── cline_mcp_settings.json# Cline 注册配置
@@ -204,8 +252,8 @@ finterminal-mcp/
 ## 已知限制
 
 - 实时行情基于腾讯公开接口（无需密钥）；海外标的回退 yfinance，需要可访问 Yahoo 的网络
-- 图表已扩展到 25 种，但暂不支持词云、桑基图等特殊类型
-- 趋势预测为线性模型 v1（研究参考用）；VLM 视觉模型需自行配置密钥
+- 图表支持 27 种内置类型（含词云、桑基图、3D 散点/曲面等），插件可继续扩展
+- 趋势预测支持 ARIMA / ETS / 线性自动择优（研究参考用）；VLM 视觉模型需自行配置密钥
 - 数据链为本地单机账本，RFC3161 时间戳提供"时刻存在性"证明，完整防篡改仍需多副本/多方同步
 
 ## 产品风险与注意事项
