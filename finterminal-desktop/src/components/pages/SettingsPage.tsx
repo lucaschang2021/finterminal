@@ -3,6 +3,7 @@ import { Eye, EyeOff } from 'lucide-react'
 
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n/LanguageContext'
 import { useTheme } from '@/theme/ThemeContext'
 import { PRESETS, type ThemeMode } from '@/theme/themes'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,7 @@ interface KeyStatus {
 }
 
 export default function SettingsPage() {
+  const { t, lang, setLang } = useI18n()
   const { config, update } = useTheme()
   const [model, setModel] = useState(localStorage.getItem('finterminal_model') || 'deepseek-v4-flash')
   const [modelSaved, setModelSaved] = useState(false)
@@ -34,14 +36,14 @@ export default function SettingsPage() {
   const saveKey = () => {
     const k = apiKey.trim()
     if (!k) {
-      setKeyMsg({ ok: false, text: '请输入 API Key' })
+      setKeyMsg({ ok: false, text: t('settings.needKey') })
       return
     }
     setKeyBusy('save')
     setKeyMsg(null)
     api.settingsApiKeySave(k)
       .then((r) => {
-        setKeyMsg({ ok: true, text: r.text || '已保存' })
+        setKeyMsg({ ok: true, text: r.text || t('settings.keySaved') })
         setApiKey('')
         setShowKey(false)
         refreshKeyStatus()
@@ -51,36 +53,57 @@ export default function SettingsPage() {
   }
 
   const clearKey = () => {
-    if (!window.confirm('确定清除已保存的 API Key？')) return
+    if (!window.confirm(t('settings.confirmClear'))) return
     setKeyBusy('clear')
     setKeyMsg(null)
     api.settingsApiKeyDelete()
       .then((r) => {
-        setKeyMsg({ ok: true, text: r.text || 'API Key 已清除' })
+        setKeyMsg({ ok: true, text: r.text || t('settings.keyCleared') })
         refreshKeyStatus()
       })
       .catch((e) => setKeyMsg({ ok: false, text: (e as Error).message }))
       .finally(() => setKeyBusy(null))
   }
 
-  const modes: { key: ThemeMode; label: string }[] = [
-    { key: 'dark', label: '深色' },
-    { key: 'light', label: '浅色' },
-    { key: 'auto', label: '按时间自动' },
+  const modes: { key: ThemeMode; labelKey: string }[] = [
+    { key: 'dark', labelKey: 'settings.dark' },
+    { key: 'light', labelKey: 'settings.light' },
+    { key: 'auto', labelKey: 'settings.auto' },
   ]
 
   return (
     <div className="p-5">
-      <h2 className="page-title">设置</h2>
-      <p className="page-sub mb-4">外观主题 · 模型配置 · 偏好</p>
+      <h2 className="page-title">{t('settings.title')}</h2>
+      <p className="page-sub mb-4">{t('settings.subtitle')}</p>
+
+      {/* 语言 / Language */}
+      <div className="liquid-glass d2-cut mb-4 p-4">
+        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('settings.language')}</div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={lang === 'zh' ? 'default' : 'secondary'}
+            onClick={() => setLang('zh')}
+          >
+            {t('settings.langZh')}
+          </Button>
+          <Button
+            size="sm"
+            variant={lang === 'en' ? 'default' : 'secondary'}
+            onClick={() => setLang('en')}
+          >
+            {t('settings.langEn')}
+          </Button>
+        </div>
+      </div>
 
       {/* 外观主题 */}
       <div className="liquid-glass d2-cut mb-4 p-4">
-        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>主题预设</div>
+        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('settings.themePresets')}</div>
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
           {PRESETS.map((p, i) => (
             <button
-              key={p.name}
+              key={p.nameKey}
               onClick={() => update({ presetIndex: i })}
               className={cn(
                 'flex flex-col items-center gap-2 rounded-xl p-3 transition-all',
@@ -92,14 +115,14 @@ export default function SettingsPage() {
                 className="h-8 w-8 rounded-full"
                 style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})` }}
               />
-              <span className="text-[11px]">{p.name}</span>
+              <span className="text-[11px]">{t(p.nameKey)}</span>
             </button>
           ))}
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
-            <div className="mb-1 text-xs" style={{ color: 'var(--muted)' }}>自定义主色</div>
+            <div className="mb-1 text-xs" style={{ color: 'var(--muted)' }}>{t('settings.customPrimary')}</div>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -111,7 +134,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div>
-            <div className="mb-1 text-xs" style={{ color: 'var(--muted)' }}>自定义辅色</div>
+            <div className="mb-1 text-xs" style={{ color: 'var(--muted)' }}>{t('settings.customSecondary')}</div>
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -127,7 +150,7 @@ export default function SettingsPage() {
         <div className="mt-5 grid grid-cols-2 gap-6">
           <div>
             <div className="mb-1 flex justify-between text-xs">
-              <span style={{ color: 'var(--muted)' }}>流动速度</span>
+              <span style={{ color: 'var(--muted)' }}>{t('settings.flowSpeed')}</span>
               <span className="mono">{config.flowSpeed}s</span>
             </div>
             <input
@@ -138,7 +161,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <div className="mb-1 flex justify-between text-xs">
-              <span style={{ color: 'var(--muted)' }}>流动强度</span>
+              <span style={{ color: 'var(--muted)' }}>{t('settings.flowStrength')}</span>
               <span className="mono">{config.flowStrength}%</span>
             </div>
             <input
@@ -152,7 +175,7 @@ export default function SettingsPage() {
 
       {/* 深浅模式 */}
       <div className="liquid-glass d2-cut mb-4 p-4">
-        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>显示模式</div>
+        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('settings.displayMode')}</div>
         <div className="flex gap-2">
           {modes.map((m) => (
             <Button
@@ -161,7 +184,7 @@ export default function SettingsPage() {
               variant={config.mode === m.key ? 'default' : 'secondary'}
               onClick={() => update({ mode: m.key })}
             >
-              {m.label}
+              {t(m.labelKey)}
             </Button>
           ))}
         </div>
@@ -169,7 +192,7 @@ export default function SettingsPage() {
 
       {/* 模型配置 */}
       <div className="liquid-glass d2-cut p-4">
-        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>模型配置</div>
+        <div className="mb-3 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('settings.modelConfig')}</div>
 
         {/* API Key */}
         <div className="mb-4 rounded-lg border p-3" style={{ borderColor: 'var(--hairline)', background: 'rgba(255,255,255,0.025)' }}>
@@ -181,21 +204,21 @@ export default function SettingsPage() {
                   className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
                   style={{ background: 'color-mix(in srgb, var(--ok) 15%, transparent)', color: 'var(--ok)' }}
                 >
-                  已配置（来源: {keyStatus.source}）
+                  {t('settings.configured', { source: keyStatus.source })}
                 </span>
               ) : (
                 <span
                   className="rounded-full px-2.5 py-0.5 text-[11px] font-medium"
                   style={{ background: 'rgba(128,128,128,0.14)', color: 'var(--muted)' }}
                 >
-                  未配置
+                  {t('settings.notConfigured')}
                 </span>
               )
             ) : (
-              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>读取中…</span>
+              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{t('settings.reading')}</span>
             )}
             {keyStatus && !keyStatus.configured && (
-              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>配置后可使用 AI 对话 / 研报功能</span>
+              <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{t('settings.keyHint')}</span>
             )}
           </div>
 
@@ -205,7 +228,7 @@ export default function SettingsPage() {
                 type={showKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => { setApiKey(e.target.value); setKeyMsg(null) }}
-                placeholder="sk-请输入你的 DeepSeek API Key"
+                placeholder={t('settings.keyPlaceholder')}
                 autoComplete="off"
                 className="glass-input h-9 w-full rounded-md px-3 pr-9 text-sm outline-none"
               />
@@ -213,16 +236,16 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => setShowKey((s) => !s)}
                 className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-[var(--muted)] hover:text-[var(--fg)]"
-                title={showKey ? '隐藏' : '显示'}
+                title={showKey ? t('settings.hide') : t('settings.show')}
               >
                 {showKey ? <EyeOff className="h-4 w-4" strokeWidth={1.5} /> : <Eye className="h-4 w-4" strokeWidth={1.5} />}
               </button>
             </div>
             <Button size="sm" onClick={saveKey} disabled={keyBusy !== null || !apiKey.trim()}>
-              {keyBusy === 'save' ? '保存中…' : '保存'}
+              {keyBusy === 'save' ? t('common.saving') : t('common.save')}
             </Button>
             <Button size="sm" variant="secondary" onClick={clearKey} disabled={keyBusy !== null || !keyStatus?.configured}>
-              {keyBusy === 'clear' ? '清除中…' : '清除'}
+              {keyBusy === 'clear' ? t('common.clearing') : t('common.clear')}
             </Button>
           </div>
 
@@ -231,9 +254,9 @@ export default function SettingsPage() {
           )}
 
           <div className="mt-2 space-y-0.5 text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>
-            <div>· Key 优先存储于 Windows 凭据管理器，仅保存在本机</div>
-            <div>· 若已设置环境变量 DEEPSEEK_API_KEY，将以环境变量为准（优先级最高）</div>
-            <div>· 未配置 Key 时，本地功能（文件 / 图表 / 分析 / 数据链 / 知识库）不受影响</div>
+            <div>{t('settings.keyNote1')}</div>
+            <div>{t('settings.keyNote2')}</div>
+            <div>{t('settings.keyNote3')}</div>
           </div>
         </div>
 
@@ -242,13 +265,13 @@ export default function SettingsPage() {
             className="glass-input h-9 flex-1 rounded-md px-3 text-sm outline-none"
             value={model}
             onChange={(e) => { setModel(e.target.value); setModelSaved(false) }}
-            placeholder="DeepSeek 模型名"
+            placeholder={t('settings.modelName')}
           />
           <Button size="sm" onClick={() => { localStorage.setItem('finterminal_model', model); setModelSaved(true) }}>
-            保存
+            {t('common.save')}
           </Button>
         </div>
-        {modelSaved && <p className="mt-2 text-[11px] text-emerald-400">已保存，重启应用后生效</p>}
+        {modelSaved && <p className="mt-2 text-[11px] text-emerald-400">{t('settings.modelSaved')}</p>}
       </div>
     </div>
   )

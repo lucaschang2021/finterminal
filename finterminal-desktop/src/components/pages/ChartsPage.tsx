@@ -9,39 +9,41 @@ import {
 } from 'lucide-react'
 
 import { api } from '@/api'
+import { useI18n } from '@/i18n/LanguageContext'
 import { cn } from '@/lib/utils'
 
-const CHART_META: Record<string, { icon: LucideIcon; zh: string }> = {
-  line: { icon: ChartLine, zh: '折线' },
-  bar: { icon: ChartBar, zh: '柱状' },
-  barh: { icon: Rows, zh: '水平柱状' },
-  stacked_bar: { icon: ChartColumnStacked, zh: '堆叠柱状' },
-  grouped_bar: { icon: ChartColumnBig, zh: '分组柱状' },
-  scatter: { icon: ChartScatter, zh: '散点' },
-  bubble: { icon: CircleDot, zh: '气泡' },
-  pie: { icon: ChartPie, zh: '饼图' },
-  donut: { icon: Donut, zh: '环形' },
-  area: { icon: ChartArea, zh: '面积' },
-  candlestick: { icon: ChartCandlestick, zh: 'K线' },
-  box: { icon: Square, zh: '箱线' },
-  violin: { icon: AudioLines, zh: '小提琴' },
-  histogram: { icon: ChartColumnIncreasing, zh: '直方图' },
-  heatmap: { icon: Grid2x2, zh: '热力图' },
-  radar: { icon: Radar, zh: '雷达' },
-  waterfall: { icon: Waves, zh: '瀑布' },
-  funnel: { icon: Filter, zh: '漏斗' },
-  step: { icon: TrendingUp, zh: '阶梯' },
-  polar: { icon: Target, zh: '极坐标' },
-  errorbar: { icon: Ruler, zh: '误差棒' },
-  treemap: { icon: LayoutGrid, zh: '矩形树' },
-  scatter3d: { icon: Boxes, zh: '3D散点' },
-  surface: { icon: Mountain, zh: '3D曲面' },
-  technical: { icon: ChartCandlestick, zh: '技术面' },
-  wordcloud: { icon: Cloud, zh: '词云' },
-  sankey: { icon: Network, zh: '桑基' },
+const CHART_META: Record<string, { icon: LucideIcon; labelKey: string }> = {
+  line: { icon: ChartLine, labelKey: 'chartTypes.line' },
+  bar: { icon: ChartBar, labelKey: 'chartTypes.bar' },
+  barh: { icon: Rows, labelKey: 'chartTypes.barh' },
+  stacked_bar: { icon: ChartColumnStacked, labelKey: 'chartTypes.stacked_bar' },
+  grouped_bar: { icon: ChartColumnBig, labelKey: 'chartTypes.grouped_bar' },
+  scatter: { icon: ChartScatter, labelKey: 'chartTypes.scatter' },
+  bubble: { icon: CircleDot, labelKey: 'chartTypes.bubble' },
+  pie: { icon: ChartPie, labelKey: 'chartTypes.pie' },
+  donut: { icon: Donut, labelKey: 'chartTypes.donut' },
+  area: { icon: ChartArea, labelKey: 'chartTypes.area' },
+  candlestick: { icon: ChartCandlestick, labelKey: 'chartTypes.candlestick' },
+  box: { icon: Square, labelKey: 'chartTypes.box' },
+  violin: { icon: AudioLines, labelKey: 'chartTypes.violin' },
+  histogram: { icon: ChartColumnIncreasing, labelKey: 'chartTypes.histogram' },
+  heatmap: { icon: Grid2x2, labelKey: 'chartTypes.heatmap' },
+  radar: { icon: Radar, labelKey: 'chartTypes.radar' },
+  waterfall: { icon: Waves, labelKey: 'chartTypes.waterfall' },
+  funnel: { icon: Filter, labelKey: 'chartTypes.funnel' },
+  step: { icon: TrendingUp, labelKey: 'chartTypes.step' },
+  polar: { icon: Target, labelKey: 'chartTypes.polar' },
+  errorbar: { icon: Ruler, labelKey: 'chartTypes.errorbar' },
+  treemap: { icon: LayoutGrid, labelKey: 'chartTypes.treemap' },
+  scatter3d: { icon: Boxes, labelKey: 'chartTypes.scatter3d' },
+  surface: { icon: Mountain, labelKey: 'chartTypes.surface' },
+  technical: { icon: ChartCandlestick, labelKey: 'chartTypes.technical' },
+  wordcloud: { icon: Cloud, labelKey: 'chartTypes.wordcloud' },
+  sankey: { icon: Network, labelKey: 'chartTypes.sankey' },
 }
 
 export default function ChartsPage({ onOpenDetail }: { onOpenDetail: (chartType: string) => void }) {
+  const { t } = useI18n()
   const [types, setTypes] = useState<string[]>([])
   const [path, setPath] = useState('')
   const [err, setErr] = useState('')
@@ -75,19 +77,19 @@ export default function ChartsPage({ onOpenDetail }: { onOpenDetail: (chartType:
 
   return (
     <div className="p-5">
-      <h2 className="page-title">图表</h2>
-      <p className="page-sub mb-4">24+ 种图表 · 点击缩略图在底部面板交互渲染</p>
+      <h2 className="page-title">{t('charts.title')}</h2>
+      <p className="page-sub mb-4">{t('charts.subtitle')}</p>
 
       {err && <p className="mb-3 text-xs text-destructive">{err}</p>}
 
       <div ref={gridRef} className="grid grid-cols-4 gap-3 xl:grid-cols-6">
-        {types.map((t) => {
-          const meta = CHART_META[t] ?? { icon: ChartLine, zh: t }
+        {types.map((ct) => {
+          const meta = CHART_META[ct] ?? { icon: ChartLine, labelKey: ct }
           const Icon = meta.icon
           return (
             <button
-              key={t}
-              onClick={() => onOpenDetail(t)}
+              key={ct}
+              onClick={() => onOpenDetail(ct)}
               className={cn(
                 'liquid-glass chart-card group flex flex-col items-center gap-2 p-4',
               )}
@@ -98,20 +100,20 @@ export default function ChartsPage({ onOpenDetail }: { onOpenDetail: (chartType:
               >
                 <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
               </span>
-              <span className="text-xs font-medium">{meta.zh}</span>
-              <span className="mono text-[10px]" style={{ color: 'var(--muted)' }}>{t}</span>
+              <span className="text-xs font-medium">{t(meta.labelKey)}</span>
+              <span className="mono text-[10px]" style={{ color: 'var(--muted)' }}>{ct}</span>
             </button>
           )
         })}
       </div>
 
       <div className="liquid-glass mt-4 p-4">
-        <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>数据文件（可选，用于本地数据图表）</div>
+        <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('charts.dataFile')}</div>
         <input
           className="glass-input h-9 w-full rounded-md px-3 text-sm outline-none"
           value={path}
           onChange={(e) => setPath(e.target.value)}
-          placeholder="C:/xxx/sales.csv（行情图可留空）"
+          placeholder={t('charts.dataFilePlaceholder')}
         />
       </div>
     </div>

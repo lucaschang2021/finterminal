@@ -10,9 +10,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n/LanguageContext'
 import Logo from './Logo'
 
 export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => void }) {
+  const { t } = useI18n()
   const [name, setName] = useState('')
   const [pw, setPw] = useState('')
   const [remember, setRememberState] = useState(true)
@@ -23,17 +25,17 @@ export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => 
   const submit = () => {
     setErr('')
     if (!name.trim() || !pw) {
-      setErr('请输入用户名和密码')
+      setErr(t('login.errRequired'))
       return
     }
     if (mode === 'login') {
       if (!login(name, pw)) {
-        setErr('用户名或密码错误')
+        setErr(t('login.errBad'))
         return
       }
     } else {
       if (!register(name, pw)) {
-        setErr('用户名已存在')
+        setErr(t('login.errExists'))
         return
       }
       setRemember(name, remember)
@@ -74,14 +76,14 @@ export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => 
         <div className="mb-6 flex flex-col items-center">
           <Logo size={64} />
           <h1 className="mt-3 text-xl font-semibold tracking-wide">FinTerminal</h1>
-          <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>本地金融数据终端</p>
+          <p className="mt-1 text-xs" style={{ color: 'var(--muted)' }}>{t('login.subtitle')}</p>
         </div>
 
         <div className="space-y-3">
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="用户名"
+            placeholder={t('login.username')}
             className="glass-input h-10 border-0 text-sm"
           />
           <Input
@@ -89,7 +91,7 @@ export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => 
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="密码"
+            placeholder={t('login.password')}
             className="glass-input h-10 border-0 text-sm"
           />
         </div>
@@ -97,12 +99,12 @@ export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => 
         {err && <p className="mt-3 text-xs text-destructive">{err}</p>}
 
         <Button onClick={submit} className="glow-btn mt-4 h-10 w-full text-sm">
-          {mode === 'login' ? '登 录' : '注 册'}
+          {mode === 'login' ? t('login.login') : t('login.register')}
         </Button>
 
         <label className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--muted)' }}>
           <Checkbox checked={remember} onCheckedChange={(v) => setRememberState(!!v)} />
-          记住我（下次自动登录）
+          {t('login.rememberSub')}
         </label>
 
         <div className="mt-3 flex items-center justify-between text-xs">
@@ -111,16 +113,16 @@ export default function LoginPage({ onSuccess }: { onSuccess: (name: string) => 
             style={{ color: 'var(--muted)' }}
             onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setErr('') }}
           >
-            {mode === 'login' ? '注册新账号' : '返回登录'}
+            {mode === 'login' ? t('login.registerNew') : t('login.backToLogin')}
           </button>
-          <button className="hover:underline" style={{ color: 'var(--muted)' }} onClick={() => setErr('本地演示版：请先注册账号')}>
-            忘记密码？
+          <button className="hover:underline" style={{ color: 'var(--muted)' }} onClick={() => setErr(t('login.forgotHint'))}>
+            {t('login.forgot')}
           </button>
         </div>
 
         {users.length > 0 && (
           <div className="mt-5 border-t pt-4" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-            <p className="mb-2 text-[11px]" style={{ color: 'var(--muted)' }}>切换用户</p>
+            <p className="mb-2 text-[11px]" style={{ color: 'var(--muted)' }}>{t('login.switchUser')}</p>
             <div className="flex flex-wrap gap-2">
               {users.map((u) => (
                 <button

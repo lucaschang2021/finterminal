@@ -1,18 +1,18 @@
 /** 主题预设与配置类型 */
 
 export interface ThemePreset {
-  name: string
+  nameKey: string
   primary: string
   secondary: string
 }
 
 export const PRESETS: ThemePreset[] = [
-  { name: '极简', primary: '#EDEDED', secondary: '#A9B0BA' },
-  { name: '月白', primary: '#D5DAE1', secondary: '#98A0AC' },
-  { name: '石墨', primary: '#B9C0CA', secondary: '#8A93A0' },
-  { name: '烟灰', primary: '#A3ABB8', secondary: '#79828F' },
-  { name: '墨灰', primary: '#8C95A3', secondary: '#646C78' },
-  { name: '自定义', primary: '#EDEDED', secondary: '#A9B0BA' },
+  { nameKey: 'presets.minimal', primary: '#EDEDED', secondary: '#A9B0BA' },
+  { nameKey: 'presets.moon', primary: '#D5DAE1', secondary: '#98A0AC' },
+  { nameKey: 'presets.graphite', primary: '#B9C0CA', secondary: '#8A93A0' },
+  { nameKey: 'presets.ash', primary: '#A3ABB8', secondary: '#79828F' },
+  { nameKey: 'presets.ink', primary: '#8C95A3', secondary: '#646C78' },
+  { nameKey: 'presets.custom', primary: '#EDEDED', secondary: '#A9B0BA' },
 ]
 
 export type ThemeMode = 'dark' | 'light' | 'auto'

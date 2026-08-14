@@ -6,6 +6,7 @@ import { Activity, LibraryBig, Pin, PinOff, Waypoints } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n/LanguageContext'
 import { stripEmoji } from '@/lib/utils'
 
 const DATA_TOKEN = /([-+]?\d+(?:\.\d+)?(?:%|℃)?|正常|成功|已连接|在线|通过|就绪|完成|同步中|失败|错误|异常|离线|中断|拒绝|无法|不存在|缺失)/g
@@ -84,6 +85,7 @@ function Panel({ title, icon, loading, children }: {
 }
 
 export default function RightBoard() {
+  const { t } = useI18n()
   const [code, setCode] = useState('sh600519')
   const codeRef = useRef(code)
   const [quote, setQuote] = useState('')
@@ -121,10 +123,10 @@ export default function RightBoard() {
 
   const loadQuote = (skipCache = false) => {
     setLoading(true)
-    api.readApi(codeRef.current, skipCache).then((r) => setQuote(r.text ?? '')).catch(() => setQuote('行情获取失败（可能离线）')).finally(() => setLoading(false))
+    api.readApi(codeRef.current, skipCache).then((r) => setQuote(r.text ?? '')).catch(() => setQuote(t('board.quoteFail'))).finally(() => setLoading(false))
   }
-  const loadChain = () => api.chain({ action: 'status' }).then((r) => setChain(r.text ?? '')).catch(() => setChain('数据链读取失败'))
-  const loadKb = () => api.knowledge({ action: 'status' }).then((r) => setKb(r.text ?? '')).catch(() => setKb('知识库读取失败'))
+  const loadChain = () => api.chain({ action: 'status' }).then((r) => setChain(r.text ?? '')).catch(() => setChain(t('board.chainFail')))
+  const loadKb = () => api.knowledge({ action: 'status' }).then((r) => setKb(r.text ?? '')).catch(() => setKb(t('board.kbFail')))
 
   useEffect(() => {
     loadQuote(true)
@@ -170,13 +172,13 @@ export default function RightBoard() {
           className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2.5 border-0 bg-transparent"
           style={{ color: 'var(--muted)' }}
           onClick={() => setOpen(true)}
-          title="展开看板"
+          title={t('board.expand')}
         >
           <span className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
             style={{ background: 'rgba(255,255,255,0.05)' }}>
             <Activity className="h-4 w-4" strokeWidth={1.75} />
           </span>
-          <span className="text-[11px] tracking-[0.18em]" style={{ writingMode: 'vertical-rl' }}>看板</span>
+          <span className="text-[11px] tracking-[0.18em]" style={{ writingMode: 'vertical-rl' }}>{t('board.board')}</span>
         </button>
       )}
 
@@ -192,27 +194,27 @@ export default function RightBoard() {
       >
         <div className="rb-scroll h-full min-w-0 overflow-y-auto overflow-x-hidden pr-1">
           <div className="w-full min-w-0 space-y-2.5">
-            <Panel title="实时行情" icon={<Activity className="h-4 w-4" strokeWidth={1.5} />} loading={loading}>
+            <Panel title={t('board.realtime')} icon={<Activity className="h-4 w-4" strokeWidth={1.5} />} loading={loading}>
               <div className="flex w-full min-w-0 gap-2">
                 <Input value={code} onChange={(e) => setCode(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && loadQuote(true)}
                   size={4}
-                  placeholder="股票代码" className="glass-input h-9 min-w-0 flex-1 border-0 text-[13px]"
+                  placeholder={t('board.codePlaceholder')} className="glass-input h-9 min-w-0 flex-1 border-0 text-[13px]"
                   style={{ minWidth: 0 }} />
-                <Button size="sm" variant="secondary" onClick={() => loadQuote(true)} className="d2-cta h-9 shrink-0 whitespace-nowrap px-3 text-[13px]">查询</Button>
+                <Button size="sm" variant="secondary" onClick={() => loadQuote(true)} className="d2-cta h-9 shrink-0 whitespace-nowrap px-3 text-[13px]">{t('board.query')}</Button>
               </div>
               <div className="mt-1.5 flex items-center gap-1.5 text-[11px]" style={{ color: live ? 'var(--ok)' : 'var(--muted)' }}>
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: live ? 'var(--ok)' : 'rgba(255,255,255,0.2)' }} />
-                {live ? '盘中，自动刷新中（20s）' : '已收盘 / 休市，手动查询'}
+                {live ? t('board.liveAuto') : t('board.closedManual')}
               </div>
               {quote && <div className="rb-scroll mt-1 max-h-44 overflow-y-auto pr-1"><DataText text={stripEmoji(quote)} /></div>}
             </Panel>
 
-            <Panel title="数据链状态" icon={<Waypoints className="h-4 w-4" strokeWidth={1.5} />}>
+            <Panel title={t('board.chainStatus')} icon={<Waypoints className="h-4 w-4" strokeWidth={1.5} />}>
               {chain && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(chain)} /></div>}
             </Panel>
 
-            <Panel title="知识库状态" icon={<LibraryBig className="h-4 w-4" strokeWidth={1.5} />}>
+            <Panel title={t('board.kbStatus')} icon={<LibraryBig className="h-4 w-4" strokeWidth={1.5} />}>
               {kb && <div className="rb-scroll max-h-48 overflow-y-auto pr-1"><DataText text={stripEmoji(kb)} /></div>}
             </Panel>
           </div>
@@ -223,7 +225,7 @@ export default function RightBoard() {
           className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border-0"
           style={{ background: 'rgba(255,255,255,0.06)', color: pinned ? 'var(--brand-gold, #C9A84C)' : 'var(--muted)' }}
           onClick={() => { setPinned((v) => !v); if (pinned) setOpen(false) }}
-          title={pinned ? '取消固定' : '固定看板'}
+          title={pinned ? t('board.unpin') : t('board.pin')}
         >
           {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
         </button>

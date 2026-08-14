@@ -11,6 +11,7 @@ import {
   setCurrentUser,
   setRemember,
 } from '@/lib/auth'
+import { useI18n } from '@/i18n/LanguageContext'
 import { FLOW_PAL, interpR, R_IN_WIDE, R_OUT48, R_OUT_CLIP } from './splash/splashData'
 import './SplashScreen.css'
 
@@ -147,6 +148,7 @@ function buildStrokes(): Stroke[] {
 }
 
 export default function SplashScreen({ onDone }: { onDone: () => void }) {
+  const { t } = useI18n()
   const [stage, setStage] = useState<'idle' | 'loading' | 'login'>('idle')
   const [name, setName] = useState('')
   const [pw, setPw] = useState('')
@@ -606,17 +608,17 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
   const submit = () => {
     setErr('')
     if (!name.trim() || !pw) {
-      setErr('请输入用户名和密码')
+      setErr(t('login.errRequired'))
       return
     }
     if (mode === 'login') {
       if (!login(name, pw)) {
-        setErr('用户名或密码错误')
+        setErr(t('login.errBad'))
         return
       }
     } else {
       if (!register(name, pw)) {
-        setErr('用户名已存在')
+        setErr(t('login.errExists'))
         return
       }
       setRemember(name, remember)
@@ -642,36 +644,36 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
       <div className="splash-brand">
         <h1>Finterminal</h1>
       </div>
-      <div className="splash-hint">按任意键以启动</div>
+      <div className="splash-hint">{t('login.pressAnyKey')}</div>
       <canvas ref={blocksRef} className="splash-blocks" />
 
       <div className={`splash-login${stage === 'login' ? ' show' : ''}`}>
         <div className="card" ref={cardRef}>
           <img className="logo" src={diamondUrl} alt="FinTerminal" draggable={false} />
           <div className="title">FinTerminal</div>
-          <div className="sub">本地金融数据终端</div>
+          <div className="sub">{t('login.subtitle')}</div>
           <div className="field">
-            <label>用户名</label>
+            <label>{t('login.username')}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="请输入用户名"
+              placeholder={t('login.usernamePlaceholder')}
             />
           </div>
           <div className="field">
-            <label>密码</label>
+            <label>{t('login.password')}</label>
             <input
               type="password"
               value={pw}
               onChange={(e) => setPw(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}
-              placeholder="请输入密码"
+              placeholder={t('login.passwordPlaceholder')}
             />
           </div>
           <div className="err">{err}</div>
           <button className="btn" onClick={submit}>
-            {mode === 'login' ? '登 录' : '注 册'}
+            {mode === 'login' ? t('login.login') : t('login.register')}
           </button>
           {users.length > 0 && (
             <div className="chips">
@@ -690,7 +692,7 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
               <span className={`box${remember ? ' on' : ''}`}>
                 {remember && <Check className="h-3 w-3" strokeWidth={3} style={{ color: '#0A0E14' }} />}
               </span>
-              记住我
+              {t('login.remember')}
             </span>
             <span className="links">
               <span
@@ -699,12 +701,12 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
                   setErr('')
                 }}
               >
-                {mode === 'login' ? '注册新账户' : '返回登录'}
+                {mode === 'login' ? t('login.registerNew2') : t('login.backToLogin')}
               </span>
               <span
-                onClick={() => setErr('本地演示版：请先注册账号')}
+                onClick={() => setErr(t('login.forgotHint'))}
               >
-                忘记密码？
+                {t('login.forgot')}
               </span>
             </span>
           </div>

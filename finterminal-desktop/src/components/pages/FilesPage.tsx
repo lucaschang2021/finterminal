@@ -5,11 +5,13 @@ import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useI18n } from '@/i18n/LanguageContext'
 import { stripEmoji } from '@/lib/utils'
 
 const HOME = 'C:/Users/liuj/Desktop'
 
 export default function FilesPage() {
+  const { t } = useI18n()
   const [path, setPath] = useState(HOME)
   const [list, setList] = useState<string[]>([])
   const [keyword, setKeyword] = useState('')
@@ -42,19 +44,19 @@ export default function FilesPage() {
 
   return (
     <div className="p-5">
-      <h2 className="page-title">文件</h2>
-      <p className="page-sub mb-4">目录浏览 · 搜索 · 文件体检</p>
+      <h2 className="page-title">{t('files.title')}</h2>
+      <p className="page-sub mb-4">{t('files.subtitle')}</p>
 
       <div className="liquid-glass d2-cut mb-4 p-4">
         <div className="flex gap-2">
           <Input value={path} onChange={(e) => setPath(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="目录路径"
+            onKeyDown={(e) => e.key === 'Enter' && load()} placeholder={t('files.dirPath')}
             className="glass-input h-9 border-0" />
-          <Button size="sm" variant="secondary" onClick={() => load()}>浏览</Button>
+          <Button size="sm" variant="secondary" onClick={() => load()}>{t('common.browse')}</Button>
           <Input value={keyword} onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && search()} placeholder="搜索文件名"
+            onKeyDown={(e) => e.key === 'Enter' && search()} placeholder={t('files.searchFilename')}
             className="glass-input h-9 w-56 border-0" />
-          <Button size="sm" onClick={search}>搜索</Button>
+          <Button size="sm" onClick={search}>{t('common.search')}</Button>
         </div>
         {err && <p className="mt-2 text-xs text-destructive">{err}</p>}
       </div>
@@ -63,7 +65,7 @@ export default function FilesPage() {
         <div className="liquid-glass d2-cut p-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>{path}</span>
-            <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{list.length} 项</span>
+            <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{t('files.items', { n: list.length })}</span>
           </div>
           <ScrollArea className="h-[420px]">
             <ul>
@@ -77,28 +79,28 @@ export default function FilesPage() {
                       {isDir(ln) ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{name(ln)}</span>
-                    {!isDir(ln) && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>点击体检</span>}
+                    {!isDir(ln) && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{t('files.clickCheck')}</span>}
                   </button>
                 </li>
               ))}
-              {list.length === 0 && <li className="px-2 py-4 text-xs" style={{ color: 'var(--muted)' }}>目录为空或未加载</li>}
+              {list.length === 0 && <li className="px-2 py-4 text-xs" style={{ color: 'var(--muted)' }}>{t('files.emptyDir')}</li>}
             </ul>
           </ScrollArea>
         </div>
 
         <div className="space-y-4">
           <div className="liquid-glass d2-cut p-4">
-            <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>搜索 / 体检目标</div>
+            <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('files.searchTarget')}</div>
             <div className="flex gap-2">
-              <Input value={detectTarget} onChange={(e) => setDetectTarget(e.target.value)} placeholder="文件完整路径"
+              <Input value={detectTarget} onChange={(e) => setDetectTarget(e.target.value)} placeholder={t('files.fullPath')}
                 className="glass-input h-9 flex-1 border-0" />
-              <Button size="sm" variant="secondary" onClick={detect}>体检</Button>
+              <Button size="sm" variant="secondary" onClick={detect}>{t('files.check')}</Button>
             </div>
             {detectRes && <pre className="mono mt-3 max-h-44 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(detectRes)}</pre>}
           </div>
           {searchRes && (
             <div className="liquid-glass d2-cut p-4">
-              <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>搜索结果</div>
+              <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('files.searchResults')}</div>
               <pre className="mono max-h-52 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(searchRes)}</pre>
             </div>
           )}

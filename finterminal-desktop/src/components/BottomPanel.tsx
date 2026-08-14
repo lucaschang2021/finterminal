@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useI18n } from '@/i18n/LanguageContext'
 import { stripEmoji } from '@/lib/utils'
 import EChart from './EChart'
 
@@ -19,6 +20,7 @@ interface BottomPanelProps {
 }
 
 export default function BottomPanel({ open, onOpenChange, chartType }: BottomPanelProps) {
+  const { t } = useI18n()
   const panelRef = useRef<HTMLDivElement>(null)
   const [render, setRender] = useState(open)
 
@@ -75,7 +77,7 @@ export default function BottomPanel({ open, onOpenChange, chartType }: BottomPan
       <button
         className="absolute left-1/2 top-0 z-10 flex h-[22px] -translate-x-1/2 items-center justify-center"
         onClick={() => onOpenChange(!open)}
-        title={open ? '收起' : '拉出'}
+        title={open ? t('panel.collapse') : t('panel.pullUp')}
       >
         <span
           className="flex h-[15px] w-12 items-center justify-center rounded-b-md border-x border-b"
@@ -97,10 +99,10 @@ export default function BottomPanel({ open, onOpenChange, chartType }: BottomPan
         <div className="bp-content relative h-full px-4 pb-3 pt-3">
           <Tabs defaultValue={chartType ? 'chart' : 'report'}>
             <TabsList className="bp-tabs h-8 gap-1 border-0 bg-white/5">
-              <TabsTrigger value="chart" className="h-6 px-3 text-xs">图表详情</TabsTrigger>
-              <TabsTrigger value="report" className="h-6 px-3 text-xs">研报分析</TabsTrigger>
-              <TabsTrigger value="chain" className="h-6 px-3 text-xs">数据链可视化</TabsTrigger>
-              <TabsTrigger value="stats" className="h-6 px-3 text-xs">统计分析</TabsTrigger>
+              <TabsTrigger value="chart" className="h-6 px-3 text-xs">{t('panel.chartDetail')}</TabsTrigger>
+              <TabsTrigger value="report" className="h-6 px-3 text-xs">{t('panel.report')}</TabsTrigger>
+              <TabsTrigger value="chain" className="h-6 px-3 text-xs">{t('panel.chainViz')}</TabsTrigger>
+              <TabsTrigger value="stats" className="h-6 px-3 text-xs">{t('panel.stats')}</TabsTrigger>
             </TabsList>
             <TabsContent value="chart" className="mt-2 h-[270px]">
               <ChartDetail initialType={chartType} />
@@ -161,6 +163,7 @@ function EmptyState({
 const CHART_TYPES = ['line', 'bar', 'area', 'stacked_bar', 'grouped_bar', 'scatter', 'pie', 'donut', 'box', 'histogram', 'radar', 'heatmap', 'candlestick']
 
 function ChartDetail({ initialType }: { initialType?: string }) {
+  const { t } = useI18n()
   const [path, setPath] = useState('')
   const [chartType, setChartType] = useState(initialType || 'line')
   const [cols, setCols] = useState<{ columns: string[]; numeric: string[] }>({ columns: [], numeric: [] })
@@ -191,7 +194,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
     <div className="flex h-full gap-3">
       <div className="w-64 shrink-0 space-y-2">
         <Input value={path} onChange={(e) => setPath(e.target.value)} onBlur={() => loadCols(path)}
-          placeholder="数据文件路径" className="glass-input h-8 border-0 text-xs" />
+          placeholder={t('panel.dataPath')} className="glass-input h-8 border-0 text-xs" />
         <Select value={chartType} onValueChange={setChartType}>
           <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
             <SelectValue />
@@ -220,7 +223,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
             </Select>
           </>
         )}
-        <Button size="sm" onClick={render} className="w-full">渲染</Button>
+        <Button size="sm" onClick={render} className="w-full">{t('panel.render')}</Button>
         {err && <p className="text-[11px] text-destructive">{err}</p>}
       </div>
       <div className="min-w-0 flex-1">
@@ -229,9 +232,9 @@ function ChartDetail({ initialType }: { initialType?: string }) {
         ) : (
           <EmptyState
             icon={<BarChart3 className="h-6 w-6" />}
-            title="还没有图表"
-            desc="填写数据文件路径并选择图表类型，即可在这里渲染折线、K 线、雷达等 13 种图表。"
-            actions={['折线图', 'K线图', '饼图', '热力图']}
+            title={t('panel.noChart')}
+            desc={t('panel.noChartDesc')}
+            actions={[t('chartTypes.line'), t('chartTypes.candlestick'), t('chartTypes.pie'), t('chartTypes.heatmap')]}
           />
         )}
       </div>
@@ -240,7 +243,8 @@ function ChartDetail({ initialType }: { initialType?: string }) {
 }
 
 function ReportTab() {
-  const [topic, setTopic] = useState('写一份贵州茅台的研究报告')
+  const { t } = useI18n()
+  const [topic, setTopic] = useState(t('panel.reportTopic'))
   const [result, setResult] = useState('')
   const [busy, setBusy] = useState(false)
   const run = () => {
@@ -255,7 +259,7 @@ function ReportTab() {
       <div className="w-72 shrink-0 space-y-2">
         <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
           className="glass-input w-full resize-none rounded-md p-2 text-xs outline-none" />
-        <Button size="sm" onClick={run} disabled={busy}>{busy ? '生成中…' : '生成研报'}</Button>
+        <Button size="sm" onClick={run} disabled={busy}>{busy ? t('panel.generating') : t('panel.genReport')}</Button>
       </div>
       <ScrollArea className="min-w-0 flex-1">
         {result ? (
@@ -263,9 +267,9 @@ function ReportTab() {
         ) : (
           <EmptyState
             icon={<FileText className="h-6 w-6" />}
-            title="研报生成器"
-            desc="输入主题，AI 会基于本地数据链与知识库流式生成研究报告。"
-            actions={['贵州茅台', '市场行情', '行业分析']}
+            title={t('panel.reportGen')}
+            desc={t('panel.reportGenDesc')}
+            actions={['Kweichow Moutai', 'Market quotes', 'Industry analysis']}
           />
         )}
       </ScrollArea>
@@ -274,6 +278,7 @@ function ReportTab() {
 }
 
 function ChainTab() {
+  const { t } = useI18n()
   const [path, setPath] = useState('')
   const [result, setResult] = useState('')
   const run = (action: string) => {
@@ -282,7 +287,7 @@ function ChainTab() {
   return (
     <div className="flex h-full gap-3">
       <div className="w-72 shrink-0 space-y-2">
-        <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="路径（可选）"
+        <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('panel.pathOptional')}
           className="glass-input h-8 border-0 text-xs" />
         <div className="flex flex-wrap gap-2">
           {['status', 'snapshot', 'verify', 'history'].map((a) => (
@@ -296,9 +301,9 @@ function ChainTab() {
         ) : (
           <EmptyState
             icon={<Link2 className="h-6 w-6" />}
-            title="数据链可视化"
-            desc="查看数据链状态、快照、校验与历史记录，追踪每一步数据变更。"
-            actions={['状态', '快照', '校验', '历史']}
+            title={t('panel.chainTitle')}
+            desc={t('panel.chainDesc')}
+            actions={[t('common.status'), t('chain.snapshot'), t('chain.verify'), t('chain.history')]}
           />
         )}
       </ScrollArea>
@@ -307,6 +312,7 @@ function ChainTab() {
 }
 
 function StatsTab() {
+  const { t } = useI18n()
   const [filePath, setFilePath] = useState('')
   const [analysis, setAnalysis] = useState('describe')
   const [extra, setExtra] = useState('')
@@ -326,7 +332,7 @@ function StatsTab() {
   return (
     <div className="flex h-full gap-3">
       <div className="w-72 shrink-0 space-y-2">
-        <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder="数据文件路径"
+        <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder={t('panel.filePath')}
           className="glass-input h-8 border-0 text-xs" />
         <Select value={analysis} onValueChange={setAnalysis}>
           <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
@@ -338,9 +344,9 @@ function StatsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="参数（分组列/自变量/事件日期/信号列）"
+        <Input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={t('panel.paramsHint')}
           className="glass-input h-8 border-0 text-xs" />
-        <Button size="sm" onClick={run}>分析</Button>
+        <Button size="sm" onClick={run}>{t('common.analyze')}</Button>
       </div>
       <ScrollArea className="min-w-0 flex-1">
         {result ? (
@@ -348,9 +354,9 @@ function StatsTab() {
         ) : (
           <EmptyState
             icon={<PieChart className="h-6 w-6" />}
-            title="统计分析"
-            desc="选择分析类型并填写数据文件，运行描述统计、相关性、回归、事件研究等分析。"
-            actions={['描述统计', '相关性', '回归', '事件研究']}
+            title={t('panel.statsTitle')}
+            desc={t('panel.statsDesc')}
+            actions={['Descriptive', 'Correlation', 'Regression', 'Event study']}
           />
         )}
       </ScrollArea>

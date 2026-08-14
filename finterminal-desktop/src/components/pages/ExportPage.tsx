@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { api, fileUrl } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n/LanguageContext'
 import { stripEmoji } from '@/lib/utils'
 
 interface ExportGroup {
@@ -12,6 +13,7 @@ interface ExportGroup {
 }
 
 export default function ExportPage() {
+  const { t } = useI18n()
   const [result, setResult] = useState('')
   const [path, setPath] = useState('')
   const [chartType, setChartType] = useState('line')
@@ -19,21 +21,21 @@ export default function ExportPage() {
 
   const groups: ExportGroup[] = [
     {
-      title: '报告导出',
-      desc: '统计分析报告 / 研报（PDF / Markdown）',
+      title: t('export.reportExport'),
+      desc: t('export.reportExportDesc'),
       actions: [
         {
-          label: '生成 PDF 报告',
+          label: t('export.genPdf'),
           run: async () => {
-            if (!path) return '请先填写数据文件路径'
+            if (!path) return t('export.needPath')
             const r = await api.analyze({ file_path: path, analysis: 'report', save: true, format: 'pdf', ai_comment: true })
             return r.text ?? ''
           },
         },
         {
-          label: '生成 Markdown 报告',
+          label: t('export.genMd'),
           run: async () => {
-            if (!path) return '请先填写数据文件路径'
+            if (!path) return t('export.needPath')
             const r = await api.analyze({ file_path: path, analysis: 'report', save: true, format: 'md', ai_comment: true })
             return r.text ?? ''
           },
@@ -41,13 +43,13 @@ export default function ExportPage() {
       ],
     },
     {
-      title: '图表导出',
-      desc: 'PNG 静态图 / 交互式 HTML',
+      title: t('export.chartExport'),
+      desc: t('export.chartExportDesc'),
       actions: [
         {
-          label: '保存 PNG 图表',
+          label: t('export.savePng'),
           run: async () => {
-            if (!path) return '请先填写数据文件路径'
+            if (!path) return t('export.needPath')
             const r = await api.plotSave({ chart_type: chartType, path })
             return r.text ?? ''
           },
@@ -55,11 +57,11 @@ export default function ExportPage() {
       ],
     },
     {
-      title: '数据链证明',
-      desc: '链状态 + 变更历史（JSON/文本）',
+      title: t('export.chainProof'),
+      desc: t('export.chainProofDesc'),
       actions: [
         {
-          label: '导出链状态',
+          label: t('export.exportChain'),
           run: async () => {
             const s = await api.chain({ action: 'status' })
             const h = await api.chain({ action: 'history' })
@@ -69,11 +71,11 @@ export default function ExportPage() {
       ],
     },
     {
-      title: '知识库导出',
-      desc: '文档列表与检索结果',
+      title: t('export.kbExport'),
+      desc: t('export.kbExportDesc'),
       actions: [
         {
-          label: '导出文档清单',
+          label: t('export.exportDocs'),
           run: async () => {
             const r = await api.knowledge({ action: 'status' })
             return r.text ?? ''
@@ -97,15 +99,15 @@ export default function ExportPage() {
 
   return (
     <div className="p-5">
-      <h2 className="page-title">导出</h2>
-      <p className="page-sub mb-4">报告 · 图表 · 数据链证明 · 知识库</p>
+      <h2 className="page-title">{t('export.title')}</h2>
+      <p className="page-sub mb-4">{t('export.subtitle')}</p>
 
       <div className="liquid-glass d2-cut mb-4 p-4">
-        <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>参数</div>
+        <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('export.params')}</div>
         <div className="flex gap-2">
-          <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="数据文件路径（报告/图表导出用）"
+          <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('export.dataPathPlaceholder')}
             className="glass-input h-9 flex-1 border-0" />
-          <Input value={chartType} onChange={(e) => setChartType(e.target.value)} placeholder="图表类型 line"
+          <Input value={chartType} onChange={(e) => setChartType(e.target.value)} placeholder={t('export.chartTypePlaceholder')}
             className="glass-input h-9 w-32 border-0" />
         </div>
       </div>
@@ -118,7 +120,7 @@ export default function ExportPage() {
             <div className="flex flex-wrap gap-2">
               {g.actions.map((a, ai) => (
                 <Button key={a.label} size="sm" variant="secondary" onClick={() => runAction(gi, ai)} disabled={!!busy}>
-                  {busy === a.label ? '导出中…' : a.label}
+                  {busy === a.label ? t('export.exporting') : a.label}
                 </Button>
               ))}
             </div>
@@ -128,7 +130,7 @@ export default function ExportPage() {
 
       {result && (
         <div className="liquid-glass d2-cut mt-4 p-4">
-          <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>导出结果</div>
+          <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('export.exportResult')}</div>
           <pre className="mono max-h-72 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed" style={{ color: 'var(--muted)' }}>{stripEmoji(result)}</pre>
         </div>
       )}

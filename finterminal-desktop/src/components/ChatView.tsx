@@ -6,15 +6,16 @@ import { MessageSquare, Pencil, Plus, Trash2 } from 'lucide-react'
 import { streamAsk } from '@/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useI18n } from '@/i18n/LanguageContext'
 import type { ChatMessage } from '@/types'
 import Markdown from './Markdown'
 
-const SUGGESTIONS = [
-  '查一下贵州茅台行情',
-  '茅台的历史财报',
-  '画一张折线图',
-  '写一份贵州茅台的研究报告',
-  '检查一下数据链',
+const SUGGESTION_KEYS = [
+  'chat.suggest1',
+  'chat.suggest2',
+  'chat.suggest3',
+  'chat.suggest4',
+  'chat.suggest5',
 ]
 
 interface ChatThread {
@@ -40,20 +41,21 @@ function newId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-function makeThread(): ChatThread {
+function makeThread(title: string): ChatThread {
   const now = Date.now()
-  return { id: newId(), title: '新对话', createdAt: now, updatedAt: now, messages: [] }
+  return { id: newId(), title, createdAt: now, updatedAt: now, messages: [] }
 }
 
-function relativeTime(ts: number): string {
+function relativeTime(ts: number, t: (key: string, vars?: Record<string, string | number>) => string, lang: string): string {
   const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  return new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+  if (diff < 60_000) return t('chat.justNow')
+  if (diff < 3_600_000) return t('chat.minutesAgo', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('chat.hoursAgo', { n: Math.floor(diff / 3_600_000) })
+  return new Date(ts).toLocaleDateString(lang === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
 export default function ChatView() {
+  const { t, lang } = useI18n()
   const [threads, setThreads] = useState<ChatThread[]>(loadThreads)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [input, setInput] = useState('')
@@ -75,9 +77,9 @@ export default function ChatView() {
     if (booted.current) return
     booted.current = true
     if (threads.length === 0) {
-      const t = makeThread()
-      setThreads([t])
-      setActiveId(t.id)
+      const th = makeThread(t('chat.new'))
+      setThreads([th])
+      setActiveId(th.id)
     } else {
       setActiveId([...threads].sort((a, b) => b.updatedAt - a.updatedAt)[0].id)
     }
@@ -140,9 +142,9 @@ export default function ChatView() {
   }
 
   const createThread = () => {
-    const t = makeThread()
-    setThreads((prev) => [t, ...prev])
-    setActiveId(t.id)
+    const th = makeThread(t('chat.new'))
+    setThreads((prev) => [th, ...prev])
+    setActiveId(th.id)
     setRenameId(null)
     setConfirmDeleteId(null)
   }
@@ -159,11 +161,11 @@ export default function ChatView() {
       setConfirmDeleteId(id)
       return
     }
-    const next = threads.filter((t) => t.id !== id)
+    const next = threads.filter((tr) => tr.id !== id)
     if (next.length === 0) {
-      const t = makeThread()
-      setThreads([t])
-      setActiveId(t.id)
+      const th = makeThread(t('chat.new'))
+      setThreads([th])
+      setActiveId(th.id)
     } else {
       setThreads(next)
       if (id === activeId) {
@@ -180,7 +182,7 @@ export default function ChatView() {
 
   const commitRename = () => {
     if (renameId) {
-      const title = renameText.trim() || '新对话'
+      const title = renameText.trim() || t('chat.new')
       patchThread(renameId, (t) => ({ ...t, title, updatedAt: Date.now() }))
     }
     setRenameId(null)
@@ -192,7 +194,7 @@ export default function ChatView() {
     setInput('')
     const id = Date.now()
     const threadId = activeThread.id
-    const title = activeThread.title === '新对话' ? q.slice(0, 18) : activeThread.title
+    const title = activeThread.title === t('chat.new') ? q.slice(0, 18) : activeThread.title
     const userMsg: ChatMessage = { role: 'user', text: q, time: id }
     const asstMsg: ChatMessage = { role: 'assistant', text: '', time: id + 1 }
     patchThread(threadId, (t) => ({
@@ -237,19 +239,19 @@ export default function ChatView() {
             onClick={createThread}
           >
             <Plus className="h-4 w-4" strokeWidth={1.8} />
-            新对话
+            {t('chat.new')}
           </button>
         </div>
         <div className="rb-scroll min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-          {[...threads].sort((a, b) => b.updatedAt - a.updatedAt).map((t) => {
-            const isActive = t.id === activeThread?.id
-            const isRenaming = renameId === t.id
-            const isConfirming = confirmDeleteId === t.id
+          {[...threads].sort((a, b) => b.updatedAt - a.updatedAt).map((th) => {
+            const isActive = th.id === activeThread?.id
+            const isRenaming = renameId === th.id
+            const isConfirming = confirmDeleteId === th.id
             return (
               <div
-                key={t.id}
+                key={th.id}
                 className={`d2-thread group ${isActive ? 'active' : ''}`}
-                onClick={() => switchThread(t.id)}
+                onClick={() => switchThread(th.id)}
               >
                 <div className="flex min-w-0 items-center gap-1.5">
                   {isRenaming ? (
@@ -271,22 +273,22 @@ export default function ChatView() {
                       className="truncate text-xs font-medium"
                       style={{ color: isActive ? 'var(--fg)' : 'var(--muted)' }}
                     >
-                      {t.title}
+                      {th.title}
                     </span>
                   )}
                   {!isRenaming && (
                     <span className="ml-auto flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         className="flex h-6 w-6 items-center justify-center rounded text-[var(--muted)] hover:text-[var(--accent)]"
-                        onClick={(e) => { e.stopPropagation(); startRename(t) }}
-                        title="重命名"
+                        onClick={(e) => { e.stopPropagation(); startRename(th) }}
+                        title={t('chat.rename')}
                       >
                         <Pencil className="h-3.5 w-3.5" strokeWidth={1.6} />
                       </button>
                       <button
                         className="flex h-6 w-6 items-center justify-center rounded text-[var(--muted)] hover:text-[var(--down)]"
-                        onClick={(e) => { e.stopPropagation(); deleteThread(t.id) }}
-                        title={isConfirming ? '再次点击确认删除' : '删除对话'}
+                        onClick={(e) => { e.stopPropagation(); deleteThread(th.id) }}
+                        title={isConfirming ? t('chat.confirmDelete') : t('chat.delete')}
                       >
                         <Trash2 className="h-3.5 w-3.5" strokeWidth={1.6} />
                       </button>
@@ -296,12 +298,12 @@ export default function ChatView() {
                 {!isRenaming && (
                   <div className="mt-1 flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--muted)' }}>
                     <MessageSquare className="h-3 w-3" strokeWidth={1.5} />
-                    <span>{t.messages.length > 0 ? `${Math.ceil(t.messages.length / 2)} 轮` : '空对话'}</span>
-                    <span className="ml-auto">{relativeTime(t.updatedAt)}</span>
+                    <span>{th.messages.length > 0 ? t('chat.rounds', { n: Math.ceil(th.messages.length / 2) }) : t('chat.empty')}</span>
+                    <span className="ml-auto">{relativeTime(th.updatedAt, t, lang)}</span>
                   </div>
                 )}
                 {isConfirming && (
-                  <div className="mt-1 text-[10px]" style={{ color: 'var(--down)' }}>再次点击垃圾桶确认删除</div>
+                  <div className="mt-1 text-[10px]" style={{ color: 'var(--down)' }}>{t('chat.confirmDelete')}</div>
                 )}
               </div>
             )
@@ -312,8 +314,8 @@ export default function ChatView() {
       {/* 对话主体 */}
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b px-5 py-3" style={{ borderColor: 'var(--hairline)' }}>
-          <span className="text-sm font-semibold">FinTerminal 对话</span>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>流式输出 · 本地金融数据终端</span>
+          <span className="text-sm font-semibold">{t('chat.title')}</span>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>{t('chat.headerSub')}</span>
           {activeThread && (
             <span className="ml-auto max-w-[260px] truncate text-xs" style={{ color: 'var(--muted)' }}>
               {activeThread.title}
@@ -326,16 +328,16 @@ export default function ChatView() {
             <div className="mx-auto max-w-5xl px-6 py-5">
               {messages.length === 0 && (
                 <div className="liquid-glass suggestions-card mb-8 p-5">
-                  <div className="mb-3 text-sm font-medium">试试这样问：</div>
+                  <div className="mb-3 text-sm font-medium">{t('chat.tryAsking')}</div>
                   <div className="flex flex-wrap gap-2">
-                    {SUGGESTIONS.map((s) => (
+                    {SUGGESTION_KEYS.map((s) => (
                       <button
                         key={s}
-                        onClick={() => send(s)}
+                        onClick={() => send(t(s))}
                         className="d2-chip px-3 py-1.5 text-xs"
                         style={{ color: 'var(--muted)' }}
                       >
-                        {s}
+                        {t(s)}
                       </button>
                     ))}
                   </div>
@@ -352,10 +354,10 @@ export default function ChatView() {
               >
                     {m.role === 'user' ? m.text : (
                       <>
-                        {m.text ? <Markdown text={m.text} /> : <span style={{ color: 'var(--muted)' }}>思考中…</span>}
+                        {m.text ? <Markdown text={m.text} /> : <span style={{ color: 'var(--muted)' }}>{t('chat.thinking')}</span>}
                         {m.text && (
                           <div className="source-tag mt-2 border-t pt-1.5" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
-                            FinTerminal · 数据来源已标注 · AI 结论请人工复核
+                            {t('chat.sourceTag')}
                           </div>
                         )}
                       </>
@@ -386,7 +388,7 @@ export default function ChatView() {
                     send()
                   }
                 }}
-                placeholder="输入指令，Enter 发送，Ctrl+Enter 换行"
+                placeholder={t('chat.placeholder')}
                 rows={1}
                 maxLength={4000}
                 disabled={busy}
@@ -395,7 +397,7 @@ export default function ChatView() {
               />
               <div className="flex items-center justify-end px-2 pb-1.5">
                 <Button size="sm" onClick={() => send()} disabled={busy} className="d2-cta h-8 px-4 text-xs">
-                  {busy ? '生成中…' : '发送'}
+                  {busy ? t('chat.sending') : t('chat.send')}
                 </Button>
               </div>
             </div>

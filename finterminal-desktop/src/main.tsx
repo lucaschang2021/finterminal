@@ -8,6 +8,7 @@ import '@fontsource/inter/600.css'
 import '@fontsource/inter/700.css'
 
 import { initApiBase } from './api'
+import { LanguageProvider } from './i18n/LanguageContext'
 import { ThemeProvider } from './theme/ThemeContext'
 import Root from './Root'
 import './styles/globals.css'
@@ -18,9 +19,11 @@ async function bootstrap() {
   await initApiBase()
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <ThemeProvider>
-        <Root />
-      </ThemeProvider>
+      <LanguageProvider>
+        <ThemeProvider>
+          <Root />
+        </ThemeProvider>
+      </LanguageProvider>
     </React.StrictMode>,
   )
 }
