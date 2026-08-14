@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "fin-terminal": {
-      "command": "C:\\Users\\liuj\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-      "args": ["C:\\Users\\liuj\\Desktop\\finterminal-mcp\\mcp_server.py"]
-    }
-  }
-}

@@ -8,6 +8,7 @@ __pycache__/
 .env
 config.json
 session.json
+cline_mcp_settings.json
 data_chain/
 knowledge/
 cleaned/
