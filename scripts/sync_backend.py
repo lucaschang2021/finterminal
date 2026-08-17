@@ -21,6 +21,10 @@ import hashlib
 import shutil
 import sys
 from pathlib import Path
+# Windows GBK console cannot print emoji/CJK -> force UTF-8 output
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent          # 仓库根目录
 DEST = ROOT / "finterminal-desktop" / "python"         # 桌面端副本目录
