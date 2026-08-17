@@ -205,6 +205,11 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
     const q = (raw ?? input).trim()
     if (!q || busy || !activeThread) return
     setInput('')
+    // 多轮记忆：带上线程中最近 20 条历史消息（不含本次输入）
+    const history = activeThread.messages
+      .filter((m) => m.text)
+      .slice(-20)
+      .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))
     const id = Date.now()
     const threadId = activeThread.id
     const title = activeThread.title === t('chat.new') ? q.slice(0, 18) : activeThread.title
@@ -234,7 +239,7 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
             onChartGenerated(files)
           }
         }
-      })
+      }, 120000, history)
     } catch (e) {
       const err = (e as Error).message
       setThreads((prev) => prev.map((t) => {

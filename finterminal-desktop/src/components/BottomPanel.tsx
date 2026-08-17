@@ -170,6 +170,54 @@ function EmptyState({
 
 const CHART_TYPES = ['line', 'bar', 'barh', 'stacked_bar', 'grouped_bar', 'scatter', 'bubble', 'pie', 'donut', 'area', 'candlestick', 'box', 'violin', 'histogram', 'heatmap', 'radar', 'waterfall', 'funnel', 'step', 'polar', 'errorbar', 'treemap', 'scatter3d', 'surface', 'technical', 'wordcloud', 'sankey']
 
+/** AI 生成的图表：优先读取配套的 .option.json 用 ECharts 交互渲染，否则降级显示 PNG/HTML */
+function ChartFileCard({ name }: { name: string }) {
+  const [option, setOption] = useState<Record<string, unknown> | null>(null)
+  const [showFallback, setShowFallback] = useState(false)
+
+  useEffect(() => {
+    if (!name.toLowerCase().endsWith('.png')) {
+      setShowFallback(true)
+      return
+    }
+    let alive = true
+    const optName = name.replace(/\.png$/i, '.option.json')
+    fetch(fileUrl(optName))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no option'))))
+      .then((opt) => { if (alive && opt) setOption(opt) })
+      .catch(() => { if (alive) setShowFallback(true) })
+    return () => { alive = false }
+  }, [name])
+
+  if (option) {
+    return (
+      <div className="mb-2 h-48 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+        <EChart option={option} height="100%" />
+      </div>
+    )
+  }
+  if (showFallback) {
+    return (
+      <div className="mb-2 overflow-hidden rounded-lg border bg-background/50" style={{ borderColor: 'var(--hairline)' }}>
+        {name.toLowerCase().endsWith('.png') ? (
+          <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
+        ) : (
+          <a
+            href={fileUrl(name)}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
+          >
+            <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+            交互图表: {name}
+          </a>
+        )}
+      </div>
+    )
+  }
+  return <div className="mb-2 h-48 rounded-lg border" style={{ borderColor: 'var(--hairline)' }} />
+}
+
 function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartFiles?: string[] }) {
   const { t } = useI18n()
   const [path, setPath] = useState(() => localStorage.getItem('ft_chart_path') || '')
@@ -237,23 +285,7 @@ function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartF
       <div className="min-w-0 flex-1">
         {chartFiles && chartFiles.length > 0 ? (
           <div className="rb-scroll h-full overflow-y-auto pr-1">
-            {chartFiles.map((name) => (
-              <div key={name} className="mb-2 overflow-hidden rounded-lg border bg-background/50" style={{ borderColor: 'var(--hairline)' }}>
-                {name.toLowerCase().endsWith('.png') ? (
-                  <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
-                ) : (
-                  <a
-                    href={fileUrl(name)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
-                  >
-                    <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    交互图表: {name}
-                  </a>
-                )}
-              </div>
-            ))}
+            {chartFiles.map((name) => <ChartFileCard key={name} name={name} />)}
           </div>
         ) : option ? (
           <EChart option={option} height="100%" />

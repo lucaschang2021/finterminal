@@ -251,6 +251,8 @@ def chain(action: str = "status", path: str | None = None, file_path: str | None
 
 class AskReq(BaseModel):
     query: str
+    # 多轮对话历史：[{role: 'user'|'assistant', content: str}, ...]
+    history: list | None = None
 
 
 class ApiKeyReq(BaseModel):
@@ -299,7 +301,7 @@ def set_model(req: ModelReq):
 @app.post("/api/ask")
 def ask(req: AskReq):
     try:
-        return _ok(text=m.ask(req.query))
+        return _ok(text=m.ask(req.query, history=req.history))
     except Exception as e:
         return _err(e)
 
@@ -322,7 +324,7 @@ def ask_stream(req: AskReq):
 
     def worker():
         try:
-            result = m.ask(req.query)
+            result = m.ask(req.query, history=req.history)
         except Exception as e:
             q.put(("done", f"❌ {e}"))
             return

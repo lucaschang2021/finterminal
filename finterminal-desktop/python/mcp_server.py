@@ -147,7 +147,7 @@ DEEPSEEK_API_KEY = _load_api_key()
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL") or config.get("deepseek_model") or "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DESKTOP_DIR = config.get("desktop_dir") or os.path.join(os.path.expanduser("~"), "Desktop")
-MAX_TOOL_ROUNDS = 4  # 单次 ask 最多执行的工具调用轮数（防止无限循环）
+MAX_TOOL_ROUNDS = 12  # 单次 ask 最多执行的工具调用轮数（防止无限循环；复杂任务放宽）
 
 
 def save_api_key(api_key: str):
@@ -608,6 +608,27 @@ def _save_chart(fig, chart_type: str):
     return f"{save_path}{html_note}"
 
 
+def _save_echarts_option(chart_type: str, df, kwargs: dict, save_path) -> None:
+    """保存 ECharts option JSON（charts/xxx.option.json），供前端下边框交互渲染。
+
+    仅支持 ECharts 的 12 种类型；其余类型（K线/热力/雷达等）静默跳过，
+    前端会降级显示 PNG + 交互 HTML。
+    """
+    try:
+        from chart_data import build
+        built = build(chart_type, df, **kwargs)
+        opt = built.get("option") if built else None
+        if not opt:
+            return
+        base = str(save_path)
+        if "\n" in base:
+            base = base.split("\n")[0]
+        opt_path = Path(base.replace(".png", ".option.json"))
+        opt_path.write_text(json.dumps(opt, ensure_ascii=False, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
+
 # ==================== 编码探测 / 数据加载（已拆分至 reader.py） ====================
 def _plot(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
     """统一绘图管线：数据链记录 → 解密 → 读取 → 生成图表 → 保存。"""
@@ -631,6 +652,7 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
         fig = charts.build_figure(chart_type, df, **kwargs)
         save_path = _save_chart(fig, chart_type)
         fig = None  # _save_chart 已负责关闭
+        _save_echarts_option(chart_type, df, kwargs, save_path)
         return f"✅ 图表已保存: {save_path}"
     except Exception as e:
         if fig is not None:
@@ -811,7 +833,7 @@ def _dispatch_tool(tool_name, tool_args):
 
 
 @mcp.tool
-def ask(query: str):
+def ask(query: str, history=None):
     # 加载 session
     session = load_session()
 
@@ -986,10 +1008,15 @@ def ask(query: str):
 - 直接调用工具，不要解释。
 """
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": query},
-        ]
+        messages = [{"role": "system", "content": system_prompt}]
+        # 多轮记忆：前端传来的历史消息（最多保留最近 20 条，单条截断 2000 字符）
+        if history:
+            for h in history[-20:]:
+                role = h.get("role") if isinstance(h, dict) else None
+                content = h.get("content") if isinstance(h, dict) else None
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": str(content)[:2000]})
+        messages.append({"role": "user", "content": query})
         tools = [
             {"type": "function", "function": {"name": "search", "description": "搜索文件（keyword 留空则列出数据文件）", "parameters": {"type": "object", "properties": {"keyword": {"type": "string"}, "directory": {"type": "string"}, "recursive": {"type": "boolean"}}}}},
             {"type": "function", "function": {"name": "read", "description": "读取：本地文件（CSV/Excel/Word/PDF/文本/图片OCR）或 source=api 行情/K线（period=daily/weekly/monthly）/交叉验证", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}, "source": {"type": "string"}, "sheet_name": {"type": "string"}, "max_pages": {"type": "integer"}, "ocr": {"type": "boolean"}, "password": {"type": "string"}, "kline": {"type": "boolean"}, "days": {"type": "integer"}, "period": {"type": "string"}, "cross_check": {"type": "boolean"}}}}},

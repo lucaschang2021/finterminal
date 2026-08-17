@@ -73,8 +73,8 @@ export const api = {
       .join('&')
     return request<ApiResult>(`/chain?${q}`)
   },
-  ask: (query: string) =>
-    request<ApiResult>('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) }),
+  ask: (query: string, history?: { role: string; content: string }[]) =>
+    request<ApiResult>('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, history }) }),
   settingsApiKeyStatus: () =>
     request<ApiResult<{ configured: boolean; source: string; model: string }>>('/settings/api-key/status'),
   settingsApiKeySave: (apiKey: string) =>
@@ -105,7 +105,7 @@ export function fileUrl(name: string): string {
 }
 
 /** SSE 流式对话：POST /ask/stream，按 delta 回调追加文本 */
-export async function streamAsk(query: string, onDelta: (delta: string) => void, timeoutMs = 120000): Promise<void> {
+export async function streamAsk(query: string, onDelta: (delta: string) => void, timeoutMs = 120000, history?: { role: string; content: string }[]): Promise<void> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -114,7 +114,7 @@ export async function streamAsk(query: string, onDelta: (delta: string) => void,
     const res = await fetch(`${apiBase}/ask/stream`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, history }),
       signal: controller.signal,
     })
     if (!res.ok || !res.body) throw new Error(`流式请求失败 (${res.status})`)
