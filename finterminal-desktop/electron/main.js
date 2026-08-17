@@ -14,6 +14,11 @@ const net = require('net')
 const http = require('http')
 const crypto = require('crypto')
 
+// 单实例：防止多开导致多个后端进程（8000-8020 各占一个）与便携版解压目录残留
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
 const DEFAULT_PORT = 8000
 let backendProc = null
 let backendPort = DEFAULT_PORT
@@ -114,9 +119,9 @@ function killProcessTree(pid) {
  * 优雅关闭后端：先请求 /api/shutdown，让 PyInstaller onefile 正常结束并清理
  * _MEI* 临时解压目录；等待数秒后若仍未退出，再强杀兜底。
  */
-function shutdownBackendGracefully() {
+function shutdownBackendGracefully(onDone) {
   const proc = backendProc
-  if (!proc || !proc.pid) return
+  if (!proc || !proc.pid) { if (onDone) onDone(); return }
   const port = backendPort
   const http = require('http')
   const req = http.request(
@@ -126,13 +131,15 @@ function shutdownBackendGracefully() {
   req.on('error', () => {})
   req.on('timeout', () => { req.destroy() })
   req.end()
-  // 等待后端自行退出（清理 _MEI*），最长 6 秒，超时强杀
+  // 等待后端自行退出（清理 _MEI*），最长 6 秒，超时强杀整个进程树
   const deadline = Date.now() + 6000
+  let settled = false
   const timer = setInterval(() => {
     const exited = proc.exitCode !== null || proc.killed
     if (exited || Date.now() > deadline) {
       clearInterval(timer)
       if (!exited) killProcessTree(proc.pid)
+      if (!settled) { settled = true; if (onDone) onDone() }
     }
   }, 300)
 }
@@ -145,7 +152,7 @@ function cleanupTempExtractions() {
     const tmp = fs.realpathSync(os.tmpdir())
     const now = Date.now()
     for (const name of fs.readdirSync(tmp)) {
-      if (!/^(_MEI|3H)/.test(name)) continue
+      if (!/^(_MEI|3H|3I)/.test(name)) continue
       const full = path.join(tmp, name)
       let st = null
       try { st = fs.statSync(full) } catch { continue }
@@ -158,6 +165,26 @@ function cleanupTempExtractions() {
     }
   } catch (e) {
     log('清理残留解压目录失败:', e.message)
+  }
+}
+
+/** 启动时优雅关闭本应用遗留的孤儿后端（监听 8000-8020 的 FinTerminal 服务）。
+ * 异常退出（任务管理器强杀 / 崩溃）时 before-quit 不触发，后端会残留；
+ * 单实例锁保证不存在"另一个正在运行的实例"，因此可安全清理。 */
+function cleanupOrphanBackends() {
+  const http = require('http')
+  for (let port = DEFAULT_PORT; port <= DEFAULT_PORT + 20; port++) {
+    const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 800 }, (res) => {
+      res.resume()
+      if (res.statusCode === 200) {
+        const shut = http.request({ host: '127.0.0.1', port, path: '/api/shutdown', method: 'POST', timeout: 1000 }, (r) => { r.resume() })
+        shut.on('error', () => {})
+        shut.end()
+      }
+    })
+    req.on('error', () => {})
+    req.on('timeout', () => { req.destroy() })
+    req.end()
   }
 }
 
@@ -267,6 +294,9 @@ ipcMain.handle('backend:info', () => ({
 app.whenReady().then(async () => {
   try {
     cleanupTempExtractions()
+    cleanupOrphanBackends()
+    // 给旧后端 1.5 秒优雅退出，避免端口探测撞上残留
+    await new Promise((r) => setTimeout(r, 1500))
     const port = await startBackend()
     createWindow(port)
   } catch (e) {
@@ -286,6 +316,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
-  shutdownBackendGracefully()
+let appQuitting = false
+app.on('before-quit', (e) => {
+  if (appQuitting) return
+  e.preventDefault()
+  appQuitting = true
+  shutdownBackendGracefully(() => {
+    app.exit(0)
+  })
 })
+}
