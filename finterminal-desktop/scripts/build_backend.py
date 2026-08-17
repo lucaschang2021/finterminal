@@ -134,10 +134,32 @@ def main():
     subprocess.check_call(cmd)  # noqa: S603  # 命令为本地固定打包指令，无外部输入
     exe = OUT_DIR / "finterminal-backend" / "finterminal-backend.exe"
     if exe.exists():
+        _prune_deep_paths()
         size = sum(f.stat().st_size for f in (OUT_DIR / "finterminal-backend").rglob("*") if f.is_file()) / 1024 / 1024
         print(f"[OK] 后端打包完成: {exe} (目录总大小 {size:.1f} MB)")
     else:
         raise SystemExit("打包失败：未找到输出文件")
+
+
+def _prune_deep_paths(max_len: int = 200) -> None:
+    """删除产物中路径过深的文件（纯文档如 torch LICENSE，不影响运行）。
+
+    Windows 经典路径上限 260 字符：electron-builder 把 extraResources 复制到
+    win-unpacked/resources/backend/... 时前缀更长，超深路径会导致整个目录复制失败
+    （产物残缺）。这里把绝对路径超过 max_len 的文件删掉，并在构建完成后立即执行。
+    """
+    import os
+    removed = 0
+    root = OUT_DIR / "finterminal-backend"
+    for f in list(root.rglob("*")):
+        if f.is_file() and len(str(f)) > max_len:
+            try:
+                f.unlink()
+                removed += 1
+            except OSError:
+                pass
+    if removed:
+        print(f"[prune] 已清理 {removed} 个超深路径文件（>= {max_len} 字符，纯文档类，不影响运行）")
 
 
 if __name__ == "__main__":
