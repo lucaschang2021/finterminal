@@ -19,7 +19,9 @@ def data_dir() -> Path:
     if env:
         d = Path(env)
     elif getattr(sys, "frozen", False):
-        d = Path(sys.executable).resolve().parent / "data"
+        # 用户数据目录（%APPDATA%/FinTerminal）：重装/升级/卸载安装目录不会丢失数据
+        base = os.environ.get("APPDATA") or str(Path.home())
+        d = Path(base) / "FinTerminal"
     else:
         d = Path(__file__).resolve().parent
     d.mkdir(parents=True, exist_ok=True)

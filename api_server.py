@@ -301,7 +301,12 @@ def set_model(req: ModelReq):
 @app.post("/api/ask")
 def ask(req: AskReq):
     try:
-        return _ok(text=m.ask(req.query, history=req.history))
+        before = set(getattr(m, "_last_charts", []))
+        text = m.ask(req.query, history=req.history)
+        new = [f for f in getattr(m, "_last_charts", []) if f not in before]
+        if new:
+            text = f"{text}\n\n📊 图表文件: charts/{', charts/'.join(new)}"
+        return _ok(text=text)
     except Exception as e:
         return _err(e)
 
@@ -324,7 +329,11 @@ def ask_stream(req: AskReq):
 
     def worker():
         try:
+            before = set(getattr(m, "_last_charts", []))
             result = m.ask(req.query, history=req.history)
+            new = [f for f in getattr(m, "_last_charts", []) if f not in before]
+            if new:
+                result = f"{result}\n\n📊 图表文件: charts/{', charts/'.join(new)}"
         except Exception as e:
             q.put(("done", f"❌ {e}"))
             return

@@ -585,6 +585,9 @@ def generate_report(
 CHART_DIR = DATA_DIR / "charts"
 CHART_DIR.mkdir(exist_ok=True)
 
+# 最近生成的图表文件名（供 API 层在回复末尾附加，前端据此自动弹出展示）
+_last_charts: list = []
+
 def _save_chart(fig, chart_type: str):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S%f")
     save_path = CHART_DIR / f"{chart_type}_{timestamp}.png"
@@ -653,6 +656,14 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
         save_path = _save_chart(fig, chart_type)
         fig = None  # _save_chart 已负责关闭
         _save_echarts_option(chart_type, df, kwargs, save_path)
+        # 记录本次生成的图表文件名，供前端在回复中自动展示
+        try:
+            _name = str(save_path).split("\n")[0].replace("\\", "/").split("/")[-1]
+            if _name and _name not in _last_charts:
+                _last_charts.append(_name)
+            _last_charts[:] = _last_charts[-10:]
+        except Exception:
+            pass
         return f"✅ 图表已保存: {save_path}"
     except Exception as e:
         if fig is not None:
