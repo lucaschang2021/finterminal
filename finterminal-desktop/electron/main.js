@@ -65,8 +65,8 @@ function findFreePort(start) {
   })
 }
 
-/** 等待后端 /api/health 就绪（最长 120s：400MB onefile 冷启动 + 杀软扫描可能较慢） */
-function waitBackendReady(port, timeoutMs = 120000) {
+/** 等待后端 /api/health 就绪（onedir 免解压，正常 2-4 秒；上限 60s 兜底） */
+function waitBackendReady(port, timeoutMs = 60000) {
   const started = Date.now()
   return new Promise((resolve, reject) => {
     let lastLog = 0
@@ -85,7 +85,7 @@ function waitBackendReady(port, timeoutMs = 120000) {
         return reject(new Error(
           `后端启动超时（超过 ${Math.round(timeoutMs / 1000)} 秒）\n` +
           '可能原因：\n' +
-          '1. 首次启动需解压约 400MB 后端并加载依赖，杀毒软件扫描时会明显变慢\n' +
+          '1. 后端依赖加载较慢，杀毒软件实时扫描会进一步拖慢\n' +
           '2. 存在残留的后端进程占用了端口（可关闭所有 FinTerminal 进程后重试）\n' +
           '3. 磁盘或内存资源紧张\n' +
           '请稍后重试；若持续超时，联系开发者查看后端日志。'
@@ -95,7 +95,7 @@ function waitBackendReady(port, timeoutMs = 120000) {
         log(`后端启动中… ${Math.round((Date.now() - started) / 1000)}s`)
         lastLog = Date.now()
       }
-      setTimeout(probe, 800)
+      setTimeout(probe, 300)
     }
     probe()
   })
@@ -172,20 +172,28 @@ function cleanupTempExtractions() {
  * 异常退出（任务管理器强杀 / 崩溃）时 before-quit 不触发，后端会残留；
  * 单实例锁保证不存在"另一个正在运行的实例"，因此可安全清理。 */
 function cleanupOrphanBackends() {
-  const http = require('http')
-  for (let port = DEFAULT_PORT; port <= DEFAULT_PORT + 20; port++) {
-    const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 800 }, (res) => {
-      res.resume()
-      if (res.statusCode === 200) {
-        const shut = http.request({ host: '127.0.0.1', port, path: '/api/shutdown', method: 'POST', timeout: 1000 }, (r) => { r.resume() })
-        shut.on('error', () => {})
-        shut.end()
-      }
-    })
-    req.on('error', () => {})
-    req.on('timeout', () => { req.destroy() })
-    req.end()
-  }
+  return new Promise((resolve) => {
+    const http = require('http')
+    let found = false
+    let pending = 0
+    const done = () => { if (--pending === 0) resolve(found) }
+    for (let port = DEFAULT_PORT; port <= DEFAULT_PORT + 20; port++) {
+      pending++
+      const req = http.get({ host: '127.0.0.1', port, path: '/api/health', timeout: 500 }, (res) => {
+        res.resume()
+        if (res.statusCode === 200) {
+          found = true
+          const shut = http.request({ host: '127.0.0.1', port, path: '/api/shutdown', method: 'POST', timeout: 1000 }, (r) => { r.resume() })
+          shut.on('error', () => {})
+          shut.end()
+        }
+        done()
+      })
+      req.on('error', () => done())
+      req.on('timeout', () => { req.destroy(); done() })
+      req.end()
+    }
+  })
 }
 
 /** 启动 Python 后端子进程 */
@@ -195,8 +203,8 @@ async function startBackend() {
     : path.join(__dirname, '..', 'python')
   // 开发模式也优先使用已打包的后端 exe（避免依赖 PATH 中的 Python）
   const backendExe = app.isPackaged
-    ? path.join(pythonDir, 'finterminal-backend.exe')
-    : path.join(__dirname, '..', 'build', 'backend', 'finterminal-backend.exe')
+    ? path.join(pythonDir, 'finterminal-backend', 'finterminal-backend.exe')
+    : path.join(__dirname, '..', 'build', 'backend', 'finterminal-backend', 'finterminal-backend.exe')
 
   try {
     backendPort = await findFreePort(DEFAULT_PORT)
@@ -210,7 +218,7 @@ async function startBackend() {
 
   const isDev = !app.isPackaged
   const spawnOpts = {
-    cwd: pythonDir,
+    cwd: path.dirname(backendExe),
     windowsHide: true,
     env: { ...process.env, FIN_BACKEND_PORT: String(backendPort), FIN_API_TOKEN: backendToken },
     stdio: isDev ? 'inherit' : ['ignore', 'pipe', 'pipe'],
@@ -294,9 +302,9 @@ ipcMain.handle('backend:info', () => ({
 app.whenReady().then(async () => {
   try {
     cleanupTempExtractions()
-    cleanupOrphanBackends()
-    // 给旧后端 1.5 秒优雅退出，避免端口探测撞上残留
-    await new Promise((r) => setTimeout(r, 1500))
+    // 仅当发现遗留后端时才等待其优雅退出，避免无谓拖慢启动
+    const hadOrphan = await cleanupOrphanBackends()
+    if (hadOrphan) await new Promise((r) => setTimeout(r, 1500))
     const port = await startBackend()
     createWindow(port)
   } catch (e) {

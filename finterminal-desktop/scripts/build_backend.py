@@ -1,7 +1,7 @@
-"""用 pyinstaller 把 Python 后端打包成单个 exe（finterminal-backend.exe）。
+"""用 pyinstaller 把 Python 后端打包成目录（onedir，免启动解压，秒级启动）。
 
 用法：python scripts/build_backend.py
-产物：build/backend/finterminal-backend.exe（electron-builder 会把它作为 extraResources 打进安装包）
+产物：build/backend/finterminal-backend/（目录，electron-builder 作为 extraResources 打进安装包）
 """
 
 import subprocess
@@ -52,7 +52,7 @@ COPY_METADATA = [
 def main():
     cmd = [
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-        "--onefile", "--name", "finterminal-backend",
+        "--onedir", "--name", "finterminal-backend",
         "--distpath", str(OUT_DIR),
         "--workpath", str(BUILD_DIR / "pyinstaller_work"),
         "--specpath", str(BUILD_DIR),
@@ -74,9 +74,10 @@ def main():
 
     print("执行:", " ".join(cmd))
     subprocess.check_call(cmd)  # noqa: S603  # 命令为本地固定打包指令，无外部输入
-    exe = OUT_DIR / "finterminal-backend.exe"
+    exe = OUT_DIR / "finterminal-backend" / "finterminal-backend.exe"
     if exe.exists():
-        print(f"[OK] 后端打包完成: {exe} ({exe.stat().st_size / 1024 / 1024:.1f} MB)")
+        size = sum(f.stat().st_size for f in (OUT_DIR / "finterminal-backend").rglob("*") if f.is_file()) / 1024 / 1024
+        print(f"[OK] 后端打包完成: {exe} (目录总大小 {size:.1f} MB)")
     else:
         raise SystemExit("打包失败：未找到输出文件")
 

@@ -11,8 +11,8 @@ files:
   - package.json
 
 extraResources:
-  - from: build/backend/finterminal-backend.exe
-    to: backend/finterminal-backend.exe
+  - from: build/backend/finterminal-backend
+    to: backend/finterminal-backend
     filter: ["**/*"]
 
 win:
