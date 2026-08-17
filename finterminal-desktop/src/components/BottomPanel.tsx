@@ -200,7 +200,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CHART_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            {CHART_TYPES.map((ct) => <SelectItem key={ct} value={ct}>{t(`chartTypes.${ct}`)}</SelectItem>)}
           </SelectContent>
         </Select>
         {cols.columns.length > 0 && (
@@ -296,7 +296,9 @@ function ChainTab() {
           className="glass-input h-8 border-0 text-xs" />
         <div className="flex flex-wrap gap-2">
           {['status', 'snapshot', 'verify', 'history'].map((a) => (
-            <Button key={a} size="sm" variant="secondary" onClick={() => run(a)}>{a}</Button>
+            <Button key={a} size="sm" variant="secondary" onClick={() => run(a)}>
+              {a === 'status' ? t('common.status') : a === 'snapshot' ? t('chain.snapshot') : a === 'verify' ? t('chain.verify') : t('chain.history')}
+            </Button>
           ))}
         </div>
       </div>
@@ -345,7 +347,7 @@ function StatsTab() {
           </SelectTrigger>
           <SelectContent>
             {['describe', 'correlation', 'groupby', 'regression', 'test', 'trend', 'vif', 'event', 'did', 'backtest', 'report'].map((a) => (
-              <SelectItem key={a} value={a}>{a}</SelectItem>
+              <SelectItem key={a} value={a}>{t(`statsTypes.${a}`)}</SelectItem>
             ))}
           </SelectContent>
         </Select>

@@ -79,20 +79,44 @@ def read_xlsx(path, sheet=0):
         ws_v = wb_values[sheet] if isinstance(sheet, str) else wb_values.worksheets[sheet]
         from itertools import zip_longest
 
-        cached = _cached_formula_cells(path, sheet)
         rows = []
+        empty_streak = 0
         for row_f, row_v in zip(ws_f.iter_rows(), ws_v.iter_rows(values_only=True)):
             cells = []
+            row_has_data = False
             for cf, vv in zip_longest(row_f, row_v, fillvalue=None):
                 vf = cf.value if cf is not None else None
+                if vf is not None or vv is not None:
+                    row_has_data = True
                 if isinstance(vf, str) and vf.startswith("="):
-                    # 公式单元格：XML 带缓存计算值才用计算值，无缓存保留公式字符串
-                    cells.append(vv if cf is not None and cf.coordinate in cached else vf)
+                    # 公式单元格：有非零缓存计算值用计算值，否则保留公式字符串。
+                    # 注意：openpyxl 对"无缓存公式"返回 0/None；XML 级精确判定在
+                    # 格式残留巨大的 xlsx（如 1048576 行）上会解析卡死，故采用
+                    # 轻量判断（代价：缓存值恰为 0 的公式会保留公式字符串）。
+                    cells.append(vv if vv not in (None, 0) else vf)
                 else:
                     cells.append(vf)
-            rows.append(cells)
+            if row_has_data:
+                empty_streak = 0
+                rows.append(cells)
+            else:
+                # 连续空行超过阈值视为数据结束，跳过格式残留区（部分 xlsx 格式
+                # 残留把 dimension 撑到 65535/1048576 行，全量遍历会卡死）
+                empty_streak += 1
+                if empty_streak > 50:
+                    break
+                rows.append(cells)
         if not rows:
             return pd.DataFrame()
+        # 表头定位：跳过开头的标题/说明行（如"2026年8月应收账款"、"收款期间：…"），
+        # 取第一个"含多个非空值"的行作为表头，避免列名变成 Unnamed
+        header_idx = 0
+        for i in range(min(len(rows), 10)):
+            nonempty = [v for v in rows[i] if v is not None and str(v).strip() != '']
+            if len(nonempty) >= 2:
+                header_idx = i
+                break
+        rows = rows[header_idx:]
         header, data = rows[0], rows[1:]
         cols = [str(h) if h is not None else f"Unnamed: {i}" for i, h in enumerate(header)]
     finally:
