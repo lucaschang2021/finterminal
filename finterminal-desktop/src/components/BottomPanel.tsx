@@ -3,7 +3,7 @@ import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { BarChart3, ChevronUp, FileText, Link2, PieChart } from 'lucide-react'
 
-import { api, streamAsk } from '@/api'
+import { api, fileUrl, streamAsk } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -17,12 +17,20 @@ interface BottomPanelProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   chartType?: string
+  /** AI 对话中生成的图表文件（charts/ 下的 png/html 文件名） */
+  chartFiles?: string[]
 }
 
-export default function BottomPanel({ open, onOpenChange, chartType }: BottomPanelProps) {
+export default function BottomPanel({ open, onOpenChange, chartType, chartFiles }: BottomPanelProps) {
   const { t } = useI18n()
   const panelRef = useRef<HTMLDivElement>(null)
   const [render, setRender] = useState(open)
+  const [tab, setTab] = useState('report')
+
+  // 有图表类型或 AI 生成的图表时，自动切到「图表详情」
+  useEffect(() => {
+    if (chartType || (chartFiles && chartFiles.length > 0)) setTab('chart')
+  }, [chartType, chartFiles])
 
   useEffect(() => {
     if (open) {
@@ -97,7 +105,7 @@ export default function BottomPanel({ open, onOpenChange, chartType }: BottomPan
 
       {render && (
         <div className="bp-content relative h-full px-4 pb-3 pt-3">
-          <Tabs defaultValue={chartType ? 'chart' : 'report'}>
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="bp-tabs h-8 gap-1 border-0 bg-white/5">
               <TabsTrigger value="chart" className="h-6 px-3 text-xs">{t('panel.chartDetail')}</TabsTrigger>
               <TabsTrigger value="report" className="h-6 px-3 text-xs">{t('panel.report')}</TabsTrigger>
@@ -105,7 +113,7 @@ export default function BottomPanel({ open, onOpenChange, chartType }: BottomPan
               <TabsTrigger value="stats" className="h-6 px-3 text-xs">{t('panel.stats')}</TabsTrigger>
             </TabsList>
             <TabsContent value="chart" className="mt-2 h-[270px]">
-              <ChartDetail initialType={chartType} />
+              <ChartDetail initialType={chartType} chartFiles={chartFiles} />
             </TabsContent>
             <TabsContent value="report" className="mt-2 h-[270px]">
               <ReportTab />
@@ -160,9 +168,9 @@ function EmptyState({
   )
 }
 
-const CHART_TYPES = ['line', 'bar', 'area', 'stacked_bar', 'grouped_bar', 'scatter', 'pie', 'donut', 'box', 'histogram', 'radar', 'heatmap', 'candlestick']
+const CHART_TYPES = ['line', 'bar', 'barh', 'stacked_bar', 'grouped_bar', 'scatter', 'bubble', 'pie', 'donut', 'area', 'candlestick', 'box', 'violin', 'histogram', 'heatmap', 'radar', 'waterfall', 'funnel', 'step', 'polar', 'errorbar', 'treemap', 'scatter3d', 'surface', 'technical', 'wordcloud', 'sankey']
 
-function ChartDetail({ initialType }: { initialType?: string }) {
+function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartFiles?: string[] }) {
   const { t } = useI18n()
   const [path, setPath] = useState(() => localStorage.getItem('ft_chart_path') || '')
   const [chartType, setChartType] = useState(initialType || localStorage.getItem('ft_chart_type') || 'line')
@@ -227,7 +235,27 @@ function ChartDetail({ initialType }: { initialType?: string }) {
         {err && <p className="text-[11px] text-destructive">{err}</p>}
       </div>
       <div className="min-w-0 flex-1">
-        {option ? (
+        {chartFiles && chartFiles.length > 0 ? (
+          <div className="rb-scroll h-full overflow-y-auto pr-1">
+            {chartFiles.map((name) => (
+              <div key={name} className="mb-2 overflow-hidden rounded-lg border bg-background/50" style={{ borderColor: 'var(--hairline)' }}>
+                {name.toLowerCase().endsWith('.png') ? (
+                  <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
+                ) : (
+                  <a
+                    href={fileUrl(name)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
+                  >
+                    <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+                    交互图表: {name}
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : option ? (
           <EChart option={option} height="100%" />
         ) : (
           <EmptyState

@@ -17,6 +17,7 @@ export default function App() {
   const [view, setView] = useState<ViewKey>('chat')
   const [bottomOpen, setBottomOpen] = useState(false)
   const [chartType, setChartType] = useState<string>()
+  const [chartFiles, setChartFiles] = useState<string[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
 
@@ -72,7 +73,9 @@ export default function App() {
       <main className="relative z-10 flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={pageRef} className="h-full overflow-y-auto overflow-x-hidden">
-            {view === 'chat' && <ChatView />}
+            {view === 'chat' && (
+              <ChatView onChartGenerated={(files) => { setChartFiles(files); setBottomOpen(true) }} />
+            )}
             {view === 'files' && <FilesPage />}
             {view === 'charts' && <ChartsPage onOpenDetail={(t) => { setChartType(t); setBottomOpen(true) }} />}
             {view === 'chain' && <ChainPage />}
@@ -81,7 +84,7 @@ export default function App() {
             {view === 'export' && <ExportPage />}
           </div>
         </div>
-        <BottomPanel open={bottomOpen} onOpenChange={setBottomOpen} chartType={chartType} />
+        <BottomPanel open={bottomOpen} onOpenChange={setBottomOpen} chartType={chartType} chartFiles={chartFiles} />
       </main>
 
       <RightBoard />

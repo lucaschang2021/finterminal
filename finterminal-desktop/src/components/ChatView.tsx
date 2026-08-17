@@ -54,7 +54,7 @@ function relativeTime(ts: number, t: (key: string, vars?: Record<string, string 
   return new Date(ts).toLocaleDateString(lang === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export default function ChatView() {
+export default function ChatView({ onChartGenerated }: { onChartGenerated?: (files: string[]) => void }) {
   const { t, lang } = useI18n()
   const [threads, setThreads] = useState<ChatThread[]>(loadThreads)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -137,6 +137,19 @@ export default function ChatView() {
     return () => mm.revert()
   }, { scope: chatRef, dependencies: [activeId, messages.length] })
 
+  // 解析 AI 回复中生成的图表文件（charts/ 下的 png / html）
+  const extractChartFiles = (text: string): string[] => {
+    const re = /(?:[\\/])charts(?:[\\/])[A-Za-z0-9_\-]+\.(png|html)/gi
+    const out: string[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      const name = m[0].split(/[\\/]/).pop()!
+      if (!out.includes(name)) out.push(name)
+    }
+    return out
+  }
+  const lastChartFilesRef = useRef<string[]>([])
+
   const patchThread = (id: string, fn: (t: ChatThread) => ChatThread) => {
     setThreads((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
   }
@@ -213,6 +226,14 @@ export default function ChatView() {
           const msgs = t.messages.map((m, i) => (i === t.messages.length - 1 ? { ...m, text: acc } : m))
           return { ...t, messages: msgs }
         }))
+        // AI 生成了图表文件 → 通知外层打开底部面板展示
+        if (onChartGenerated) {
+          const files = extractChartFiles(acc)
+          if (files.length > 0 && files.join('|') !== lastChartFilesRef.current.join('|')) {
+            lastChartFilesRef.current = files
+            onChartGenerated(files)
+          }
+        }
       })
     } catch (e) {
       const err = (e as Error).message
