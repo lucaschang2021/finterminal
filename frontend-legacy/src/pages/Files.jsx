@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 
-const HOME = 'C:/Users/liuj/Desktop'
+const HOME = 'C:/Users/Public'
 
 export default function Files({ onChart }) {
   const [path, setPath] = useState(HOME)

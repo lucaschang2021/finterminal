@@ -207,8 +207,8 @@ pip install -e ".[all]"
 {
   "mcpServers": {
     "fin-terminal": {
-      "command": "C:\\Users\\liuj\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-      "args": ["C:\\Users\\liuj\\Desktop\\finterminal-mcp\\mcp_server.py"]
+      "command": "<你的 Python 解释器路径>",
+      "args": ["<项目绝对路径>/mcp_server.py"]
     }
   }
 }
@@ -227,7 +227,7 @@ pip install -e ".[all]"
 {
   "deepseek_api_key": "sk-...",
   "deepseek_model": "deepseek-v4-flash",
-  "desktop_dir": "C:/Users/liuj/Desktop"
+  "desktop_dir": ""
 }
 ```
 

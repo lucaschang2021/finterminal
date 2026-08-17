@@ -1,7 +1,7 @@
 {
   "deepseek_api_key": "",
   "deepseek_model": "deepseek-v4-flash",
-  "desktop_dir": "C:/Users/liuj/Desktop",
+  "desktop_dir": "",
   "encrypt_knowledge": false,
   "encrypt_snapshots": false,
   "market_names": {},

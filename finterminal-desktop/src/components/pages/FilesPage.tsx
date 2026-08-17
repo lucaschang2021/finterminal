@@ -8,7 +8,14 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useI18n } from '@/i18n/LanguageContext'
 import { stripEmoji } from '@/lib/utils'
 
-const HOME = 'C:/Users/liuj/Desktop'
+/** 默认目录：当前用户桌面（避免把开发者的用户名路径写死给别人） */
+function defaultHome(): string {
+  const home = window.finterminal?.homeDir
+  if (home) return home.replace(/\\/g, '/') + '/Desktop'
+  // 开发模式（无 preload）回退系统公共目录，避免硬编码具体用户名
+  return 'C:/Users/Public'
+}
+const HOME = defaultHome()
 
 export default function FilesPage() {
   const { t } = useI18n()
