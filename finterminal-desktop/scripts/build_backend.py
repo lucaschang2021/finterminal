@@ -2,6 +2,10 @@
 
 用法：python scripts/build_backend.py
 产物：build/backend/finterminal-backend/（目录，electron-builder 作为 extraResources 打进安装包）
+
+onedir 说明：Windows 260 字符路径限制下，torch 等依赖的 dist-info licenses 目录
+过深会导致 COLLECT 复制失败（WinError 206），因此 spec 中过滤超长路径的数据文件，
+这些是纯文档，不影响运行。
 """
 
 import subprocess
@@ -12,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PYTHON_DIR = ROOT / "python"
 BUILD_DIR = ROOT / "build"
 OUT_DIR = BUILD_DIR / "backend"
+SPEC_FILE = BUILD_DIR / "finterminal-backend.spec"
 
 HIDDEN_IMPORTS = [
     "uvicorn.logging",
@@ -28,11 +33,8 @@ HIDDEN_IMPORTS = [
     "pydantic",
     "sklearn",
     "openpyxl",
-    # 知识库（chromadb）运行时用字符串动态导入大量实现类
-    # （telemetry / api.rust / sqlite / executor 等），静态分析抓不到；
-    # 另外 chromadb_rust_bindings 是 .pyd 二进制，必须显式收集。
-    # 统一交给下面的 --collect-* 参数处理，此处保留 onnxruntime
-    # （ONNXMiniLM 嵌入模型依赖，之前也是缺失的）。
+    # 知识库（chromadb）运行时用字符串动态导入大量实现类，静态分析抓不到；
+    # chromadb_rust_bindings 是 .pyd 二进制，必须显式收集。统一交给 --collect-*。
     "onnxruntime",
 ]
 
@@ -49,29 +51,85 @@ COPY_METADATA = [
 ]
 
 
-def main():
-    cmd = [
-        sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-        "--onedir", "--name", "finterminal-backend",
-        "--distpath", str(OUT_DIR),
-        "--workpath", str(BUILD_DIR / "pyinstaller_work"),
-        "--specpath", str(BUILD_DIR),
-    ]
-    for h in HIDDEN_IMPORTS:
-        cmd += ["--hidden-import", h]
-    # chromadb 及其 Rust 绑定的完整收集：所有子模块 + 二进制 + 数据文件
-    cmd += ["--collect-submodules", "chromadb"]
-    cmd += ["--collect-binaries", "chromadb"]
-    cmd += ["--collect-binaries", "chromadb_rust_bindings"]
-    cmd += ["--collect-data", "chromadb"]
-    # akshare 行情回退源需要数据文件（calendar.json 等），否则打包版报
-    # "No such file or directory: .../akshare/file_fold/calendar.json"
-    cmd += ["--collect-data", "akshare"]
-    cmd += ["--collect-submodules", "akshare"]
-    for m in COPY_METADATA:
-        cmd += ["--copy-metadata", m]
-    cmd.append(str(PYTHON_DIR / "run_server.py"))
+def render_spec() -> str:
+    hidden = ",\n".join(f"    {m!r}" for m in HIDDEN_IMPORTS)
+    meta_lines = "\n".join(f"datas += copy_metadata({m!r})" for m in COPY_METADATA)
+    run_server = (PYTHON_DIR / "run_server.py").as_posix()
+    return f"""# -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import copy_metadata
 
+datas = []
+binaries = []
+hiddenimports = [
+{hidden}
+]
+datas += collect_data_files('chromadb')
+datas += collect_data_files('akshare')
+{meta_lines}
+binaries += collect_dynamic_libs('chromadb')
+binaries += collect_dynamic_libs('chromadb_rust_bindings')
+hiddenimports += collect_submodules('chromadb')
+hiddenimports += collect_submodules('akshare')
+
+a = Analysis(
+    [{run_server!r}],
+    pathex=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={{}},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+
+# Windows 路径上限约 260 字符：过滤过深的数据文件（torch licenses 等纯文档），
+# 否则 COLLECT 复制时 os.makedirs 报 WinError 206；不影响运行依赖
+MAX_PATH = 220
+a.datas = [(n, p, t) for (n, p, t) in a.datas if len(n) < MAX_PATH and len(str(p)) < MAX_PATH]
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='finterminal-backend',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='finterminal-backend',
+)
+"""
+
+
+def main():
+    SPEC_FILE.write_text(render_spec(), encoding="utf-8")
+    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+           "--distpath", str(OUT_DIR),
+           "--workpath", str(BUILD_DIR / "pyinstaller_work"),
+           str(SPEC_FILE)]
     print("执行:", " ".join(cmd))
     subprocess.check_call(cmd)  # noqa: S603  # 命令为本地固定打包指令，无外部输入
     exe = OUT_DIR / "finterminal-backend" / "finterminal-backend.exe"
