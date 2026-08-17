@@ -15,8 +15,8 @@ interface ExportGroup {
 export default function ExportPage() {
   const { t } = useI18n()
   const [result, setResult] = useState('')
-  const [path, setPath] = useState('')
-  const [chartType, setChartType] = useState('line')
+  const [path, setPath] = useState(() => localStorage.getItem('ft_export_path') || '')
+  const [chartType, setChartType] = useState(() => localStorage.getItem('ft_export_chart') || 'line')
   const [busy, setBusy] = useState('')
 
   const groups: ExportGroup[] = [
@@ -105,9 +105,9 @@ export default function ExportPage() {
       <div className="liquid-glass d2-cut mb-4 p-4">
         <div className="mb-2 text-xs font-medium" style={{ color: 'var(--muted)' }}>{t('export.params')}</div>
         <div className="flex gap-2">
-          <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('export.dataPathPlaceholder')}
+          <Input value={path} onChange={(e) => { setPath(e.target.value); localStorage.setItem('ft_export_path', e.target.value) }} placeholder={t('export.dataPathPlaceholder')}
             className="glass-input h-9 flex-1 border-0" />
-          <Input value={chartType} onChange={(e) => setChartType(e.target.value)} placeholder={t('export.chartTypePlaceholder')}
+          <Input value={chartType} onChange={(e) => { setChartType(e.target.value); localStorage.setItem('ft_export_chart', e.target.value) }} placeholder={t('export.chartTypePlaceholder')}
             className="glass-input h-9 w-32 border-0" />
         </div>
       </div>

@@ -17,8 +17,10 @@ interface KeyStatus {
 export default function SettingsPage() {
   const { t, lang, setLang } = useI18n()
   const { config, update } = useTheme()
-  const [model, setModel] = useState(localStorage.getItem('finterminal_model') || 'deepseek-v4-flash')
-  const [modelSaved, setModelSaved] = useState(false)
+
+  const [model, setModel] = useState('')
+  const [modelBusy, setModelBusy] = useState(false)
+  const [modelMsg, setModelMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null)
@@ -29,8 +31,15 @@ export default function SettingsPage() {
     api.settingsApiKeyStatus().then((r) => setKeyStatus(r.data ?? null)).catch(() => setKeyStatus(null))
   }
 
+
   useEffect(() => {
     refreshKeyStatus()
+  }, [])
+
+  useEffect(() => {
+    api.settingsModelStatus()
+      .then((r) => setModel(r.data?.model || 'deepseek-v4-flash'))
+      .catch(() => setModel('deepseek-v4-flash'))
   }, [])
 
   const saveKey = () => {
@@ -65,6 +74,20 @@ export default function SettingsPage() {
       .finally(() => setKeyBusy(null))
   }
 
+
+  const saveModel = () => {
+    const name = model.trim()
+    if (!name) {
+      setModelMsg({ ok: false, text: '模型名不能为空' })
+      return
+    }
+    setModelBusy(true)
+    setModelMsg(null)
+    api.settingsModelSave(name)
+      .then((r) => setModelMsg({ ok: true, text: r.text || '已保存' }))
+      .catch((e) => setModelMsg({ ok: false, text: (e as Error).message }))
+      .finally(() => setModelBusy(false))
+  }
   const modes: { key: ThemeMode; labelKey: string }[] = [
     { key: 'dark', labelKey: 'settings.dark' },
     { key: 'light', labelKey: 'settings.light' },
@@ -264,14 +287,16 @@ export default function SettingsPage() {
           <input
             className="glass-input h-9 flex-1 rounded-md px-3 text-sm outline-none"
             value={model}
-            onChange={(e) => { setModel(e.target.value); setModelSaved(false) }}
+            onChange={(e) => { setModel(e.target.value); setModelMsg(null) }}
             placeholder={t('settings.modelName')}
           />
-          <Button size="sm" onClick={() => { localStorage.setItem('finterminal_model', model); setModelSaved(true) }}>
-            {t('common.save')}
+          <Button size="sm" onClick={saveModel} disabled={modelBusy || !model.trim()}>
+            {modelBusy ? t('common.saving') : t('common.save')}
           </Button>
         </div>
-        {modelSaved && <p className="mt-2 text-[11px] text-emerald-400">{t('settings.modelSaved')}</p>}
+        {modelMsg && (
+          <p className="mt-2 text-[11px]" style={{ color: modelMsg.ok ? 'var(--ok)' : 'var(--bad)' }}>{modelMsg.text}</p>
+        )}
       </div>
     </div>
   )

@@ -22,6 +22,44 @@ def _dedup(cols):
     return out
 
 
+def _cached_formula_cells(path, sheet):
+    """Return set of cell coordinates whose formula has a cached <v> value.
+
+    openpyxl cannot distinguish "cached value 0" from "no cached value"
+    (formulas without cache are read as 0), so we parse the sheet XML:
+    only <f> followed by <v> counts as a real cached value.
+    """
+    import re
+    import zipfile
+
+    cached = set()
+    try:
+        with zipfile.ZipFile(path) as z:
+            xml_name = None
+            if isinstance(sheet, int):
+                xml_name = "xl/worksheets/sheet" + str(sheet + 1) + ".xml"
+            else:
+                wb_xml = z.read("xl/workbook.xml").decode("utf-8", errors="replace")
+                rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8", errors="replace")
+                rid_map = dict(re.findall(r'<sheet[^>]*name="([^"]+)"[^>]*r:id="(rId\d+)"', wb_xml))
+                rid = rid_map.get(sheet)
+                if rid:
+                    m = re.search(r'Id="' + re.escape(rid) + r'"[^>]*Target="worksheets/([^"]+)"', rels)
+                    if m:
+                        xml_name = "xl/worksheets/" + m.group(1)
+            if not xml_name:
+                return cached
+            xml = z.read(xml_name).decode("utf-8", errors="replace")
+            for m in re.finditer(r'<c[^>]*r="([A-Z]+\d+)"[^>]*>(?:(?!</c>).)*?</c>', xml, re.S):
+                cell = m.group(0)
+                v = re.search(r'<f[^>]*>.*?</f>\s*<v>([^<]*)</v>', cell, re.S)
+                # openpyxl/pandas 写盘时无缓存公式会带 <v>0</v> 或 <v></v>，视为无缓存
+                if v and v.group(1).strip() not in ("", "0"):
+                    cached.add(m.group(1))
+    except Exception:
+        pass
+    return cached
+
 def read_xlsx(path, sheet=0):
     """读取 .xlsx：公式单元格优先取缓存计算值，无缓存时保留公式字符串。
 
@@ -41,13 +79,15 @@ def read_xlsx(path, sheet=0):
         ws_v = wb_values[sheet] if isinstance(sheet, str) else wb_values.worksheets[sheet]
         from itertools import zip_longest
 
+        cached = _cached_formula_cells(path, sheet)
         rows = []
-        for row_f, row_v in zip(ws_f.iter_rows(values_only=True), ws_v.iter_rows(values_only=True)):
+        for row_f, row_v in zip(ws_f.iter_rows(), ws_v.iter_rows(values_only=True)):
             cells = []
-            for vf, vv in zip_longest(row_f, row_v, fillvalue=None):
+            for cf, vv in zip_longest(row_f, row_v, fillvalue=None):
+                vf = cf.value if cf is not None else None
                 if isinstance(vf, str) and vf.startswith("="):
-                    # 公式单元格：优先缓存计算值，无缓存则保留公式字符串
-                    cells.append(vv if vv is not None else vf)
+                    # 公式单元格：XML 带缓存计算值才用计算值，无缓存保留公式字符串
+                    cells.append(vv if cf is not None and cf.coordinate in cached else vf)
                 else:
                     cells.append(vf)
             rows.append(cells)

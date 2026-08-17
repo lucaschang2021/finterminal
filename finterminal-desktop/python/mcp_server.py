@@ -219,6 +219,36 @@ def api_key_status():
     return {"configured": configured, "source": source, "model": DEEPSEEK_MODEL}
 
 
+
+def save_model(model_name: str):
+    """Save DeepSeek model name to config.json (keeps other fields), takes effect immediately."""
+    global DEEPSEEK_MODEL
+    name = (model_name or "").strip()
+    if not name:
+        return False, "\u6a21\u578b\u540d\u4e0d\u80fd\u4e3a\u7a7a"
+    cfg = dict(config)
+    cfg["deepseek_model"] = name
+    try:
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        config.update(cfg)
+    except Exception as e:
+        return False, "\u4fdd\u5b58\u5931\u8d25: " + str(e)
+    DEEPSEEK_MODEL = name
+    return True, "\u6a21\u578b\u5df2\u4fdd\u5b58: " + name + "\uff08\u7acb\u5373\u751f\u6548\uff09"
+
+
+def model_status():
+    """Current effective model name and its source."""
+    if os.environ.get("DEEPSEEK_MODEL"):
+        source = "\u73af\u5883\u53d8\u91cf DEEPSEEK_MODEL"
+    elif config.get("deepseek_model"):
+        source = "config.json"
+    else:
+        source = "\u9ed8\u8ba4"
+    return {"model": DEEPSEEK_MODEL, "source": source}
+
 # AI 生成内容的统一风险提示：所有 AI 结论出口必须附带，提醒人工复核
 AI_DISCLAIMER = (
     "\n\n⚠️ 风险提示：以上结论由 AI 生成，仅供研究参考，不构成投资建议。"

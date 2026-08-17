@@ -85,6 +85,14 @@ export const api = {
     }),
   settingsApiKeyDelete: () =>
     request<ApiResult<{ configured: boolean }>>('/settings/api-key', { method: 'DELETE' }),
+  settingsModelStatus: () =>
+    request<ApiResult<{ model: string; source: string }>>('/settings/model'),
+  settingsModelSave: (model: string) =>
+    request<ApiResult<{ model: string }>>('/settings/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+    }),
   knowledge: (body: Record<string, unknown>) =>
     request<ApiResult>('/knowledge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   knowledgeQuery: (body: Record<string, unknown>) =>

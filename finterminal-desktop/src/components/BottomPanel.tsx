@@ -164,11 +164,11 @@ const CHART_TYPES = ['line', 'bar', 'area', 'stacked_bar', 'grouped_bar', 'scatt
 
 function ChartDetail({ initialType }: { initialType?: string }) {
   const { t } = useI18n()
-  const [path, setPath] = useState('')
-  const [chartType, setChartType] = useState(initialType || 'line')
+  const [path, setPath] = useState(() => localStorage.getItem('ft_chart_path') || '')
+  const [chartType, setChartType] = useState(initialType || localStorage.getItem('ft_chart_type') || 'line')
   const [cols, setCols] = useState<{ columns: string[]; numeric: string[] }>({ columns: [], numeric: [] })
-  const [xCol, setXCol] = useState('')
-  const [yCol, setYCol] = useState('')
+  const [xCol, setXCol] = useState(() => localStorage.getItem('ft_chart_x') || '')
+  const [yCol, setYCol] = useState(() => localStorage.getItem('ft_chart_y') || '')
   const [option, setOption] = useState<Record<string, unknown> | null>(null)
   const [err, setErr] = useState('')
 
@@ -193,9 +193,9 @@ function ChartDetail({ initialType }: { initialType?: string }) {
   return (
     <div className="flex h-full gap-3">
       <div className="w-64 shrink-0 space-y-2">
-        <Input value={path} onChange={(e) => setPath(e.target.value)} onBlur={() => loadCols(path)}
+        <Input value={path} onChange={(e) => { setPath(e.target.value); localStorage.setItem('ft_chart_path', e.target.value) }} onBlur={() => loadCols(path)}
           placeholder={t('panel.dataPath')} className="glass-input h-8 border-0 text-xs" />
-        <Select value={chartType} onValueChange={setChartType}>
+        <Select value={chartType} onValueChange={(v) => { setChartType(v); localStorage.setItem('ft_chart_type', v) }}>
           <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
             <SelectValue />
           </SelectTrigger>
@@ -205,7 +205,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
         </Select>
         {cols.columns.length > 0 && (
           <>
-            <Select value={xCol} onValueChange={setXCol}>
+            <Select value={xCol} onValueChange={(v) => { setXCol(v); localStorage.setItem('ft_chart_x', v) }}>
               <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -213,7 +213,7 @@ function ChartDetail({ initialType }: { initialType?: string }) {
                 {cols.columns.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={yCol} onValueChange={setYCol}>
+            <Select value={yCol} onValueChange={(v) => { setYCol(v); localStorage.setItem('ft_chart_y', v) }}>
               <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -284,7 +284,7 @@ function ReportTab() {
 
 function ChainTab() {
   const { t } = useI18n()
-  const [path, setPath] = useState('')
+  const [path, setPath] = useState(() => localStorage.getItem('ft_chain_path') || '')
   const [result, setResult] = useState('')
   const run = (action: string) => {
     api.chain({ action, path: path || undefined }).then((r) => setResult(r.text ?? '')).catch((e) => setResult((e as Error).message))
@@ -292,7 +292,7 @@ function ChainTab() {
   return (
     <div className="flex h-full gap-3">
       <div className="w-72 shrink-0 space-y-2">
-        <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('panel.pathOptional')}
+        <Input value={path} onChange={(e) => { setPath(e.target.value); localStorage.setItem('ft_chain_path', e.target.value) }} placeholder={t('panel.pathOptional')}
           className="glass-input h-8 border-0 text-xs" />
         <div className="flex flex-wrap gap-2">
           {['status', 'snapshot', 'verify', 'history'].map((a) => (
@@ -318,9 +318,9 @@ function ChainTab() {
 
 function StatsTab() {
   const { t } = useI18n()
-  const [filePath, setFilePath] = useState('')
+  const [filePath, setFilePath] = useState(() => localStorage.getItem('ft_stats_path') || '')
   const [analysis, setAnalysis] = useState('describe')
-  const [extra, setExtra] = useState('')
+  const [extra, setExtra] = useState(() => localStorage.getItem('ft_stats_extra') || '')
   const [result, setResult] = useState('')
   const run = () => {
     const body: Record<string, unknown> = { file_path: filePath, analysis }
@@ -337,7 +337,7 @@ function StatsTab() {
   return (
     <div className="flex h-full gap-3">
       <div className="w-72 shrink-0 space-y-2">
-        <Input value={filePath} onChange={(e) => setFilePath(e.target.value)} placeholder={t('panel.filePath')}
+        <Input value={filePath} onChange={(e) => { setFilePath(e.target.value); localStorage.setItem('ft_stats_path', e.target.value) }} placeholder={t('panel.filePath')}
           className="glass-input h-8 border-0 text-xs" />
         <Select value={analysis} onValueChange={setAnalysis}>
           <SelectTrigger className="glass-input h-8 w-full border-0 px-2 text-xs">
@@ -349,7 +349,7 @@ function StatsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={t('panel.paramsHint')}
+        <Input value={extra} onChange={(e) => { setExtra(e.target.value); localStorage.setItem('ft_stats_extra', e.target.value) }} placeholder={t('panel.paramsHint')}
           className="glass-input h-8 border-0 text-xs" />
         <Button size="sm" onClick={run}>{t('common.analyze')}</Button>
       </div>

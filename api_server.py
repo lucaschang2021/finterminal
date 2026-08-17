@@ -255,6 +255,8 @@ class AskReq(BaseModel):
 
 class ApiKeyReq(BaseModel):
     api_key: str
+class ModelReq(BaseModel):
+    model: str
 
 
 @app.post("/api/settings/api-key")
@@ -277,6 +279,21 @@ def delete_api_key():
     """清除已保存的 API Key。"""
     _ok_text, msg = m.clear_api_key()
     return _ok({"configured": False}, text=msg)
+
+
+@app.get("/api/settings/model")
+def model_status():
+    """Query current model name and its source."""
+    return _ok(m.model_status())
+
+
+@app.post("/api/settings/model")
+def set_model(req: ModelReq):
+    """Save DeepSeek model name (writes config.json, takes effect immediately)."""
+    ok, msg = m.save_model(req.model)
+    if not ok:
+        return _err(msg)
+    return _ok({"model": req.model}, text=msg)
 
 
 @app.post("/api/ask")

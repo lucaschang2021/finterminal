@@ -12,7 +12,7 @@ const HOME = 'C:/Users/liuj/Desktop'
 
 export default function FilesPage() {
   const { t } = useI18n()
-  const [path, setPath] = useState(HOME)
+  const [path, setPath] = useState(() => localStorage.getItem('ft_files_path') || HOME)
   const [list, setList] = useState<string[]>([])
   const [keyword, setKeyword] = useState('')
   const [searchRes, setSearchRes] = useState('')
@@ -49,7 +49,7 @@ export default function FilesPage() {
 
       <div className="liquid-glass d2-cut mb-4 p-4">
         <div className="flex gap-2">
-          <Input value={path} onChange={(e) => setPath(e.target.value)}
+          <Input value={path} onChange={(e) => { setPath(e.target.value); localStorage.setItem('ft_files_path', e.target.value) }}
             onKeyDown={(e) => e.key === 'Enter' && load()} placeholder={t('files.dirPath')}
             className="glass-input h-9 border-0" />
           <Button size="sm" variant="secondary" onClick={() => load()}>{t('common.browse')}</Button>
