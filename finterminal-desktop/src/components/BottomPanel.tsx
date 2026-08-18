@@ -170,13 +170,14 @@ function EmptyState({
 
 const CHART_TYPES = ['line', 'bar', 'barh', 'stacked_bar', 'grouped_bar', 'scatter', 'bubble', 'pie', 'donut', 'area', 'candlestick', 'box', 'violin', 'histogram', 'heatmap', 'radar', 'waterfall', 'funnel', 'step', 'polar', 'errorbar', 'treemap', 'scatter3d', 'surface', 'technical', 'wordcloud', 'sankey']
 
-/** AI 生成的图表：优先读取配套的 .option.json 用 ECharts 交互渲染，否则降级显示 PNG/HTML；底部可另存为 */
+/** 下边框交互图表界面：读取 .option.json（含 option + 绘图参数），支持切换图表类型、缩放、导出另存 */
 function ChartFileCard({ name }: { name: string }) {
   const { t } = useI18n()
-  const [option, setOption] = useState<Record<string, unknown> | null>(null)
+  const [payload, setPayload] = useState<{ chart_type: string; option: Record<string, unknown>; params: Record<string, string> } | null>(null)
   const [showFallback, setShowFallback] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
   const [saveErr, setSaveErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!name.toLowerCase().endsWith('.png')) {
@@ -187,10 +188,25 @@ function ChartFileCard({ name }: { name: string }) {
     const optName = name.replace(/\.png$/i, '.option.json')
     fetch(fileUrl(optName))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('no option'))))
-      .then((opt) => { if (alive && opt) setOption(opt) })
+      .then((json) => { if (alive && json) setPayload(json) })
       .catch(() => { if (alive) setShowFallback(true) })
     return () => { alive = false }
   }, [name])
+
+  // 切换图表类型：用原始参数重新请求后端生成新 option
+  const switchType = async (newType: string) => {
+    if (!payload || newType === payload.chart_type || busy) return
+    setBusy(true)
+    setSaveErr(null)
+    try {
+      const r = await api.plotData({ ...payload.params, chart_type: newType })
+      if (r.data?.option) setPayload({ ...payload, chart_type: newType, option: r.data.option })
+    } catch (e) {
+      setSaveErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const saveAs = async () => {
     setSaveErr(null)
@@ -206,52 +222,71 @@ function ChartFileCard({ name }: { name: string }) {
   }
 
   const isPng = name.toLowerCase().endsWith('.png')
-  return (
-    <div className="mb-2 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-      <div className="bg-background/50">
-        {option ? (
-          <div className="h-44">
-            <EChart
-              option={{
-                ...option,
-                // 交互增强：滚轮/滑块缩放 + 工具栏（还原、保存图片）
-                toolbox: { feature: { dataZoom: { yAxisIndex: 'none' }, restore: {}, saveAsImage: {} } },
-                dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 4 }],
-              }}
-              height="100%"
-            />
-          </div>
-        ) : showFallback ? (
-          isPng ? (
-            <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
+
+  // 降级：无 ECharts option 时显示 PNG / HTML 链接
+  if (!payload && showFallback) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-background/50">
+          {isPng ? (
+            <img src={fileUrl(name)} alt={name} className="max-h-full w-full object-contain" />
           ) : (
-            <a
-              href={fileUrl(name)}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
-            >
+            <a href={fileUrl(name)} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline">
               <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
               交互图表: {name}
             </a>
-          )
-        ) : (
-          <div className="h-44" />
-        )}
+          )}
+        </div>
+        <div className="flex items-center gap-2 border-t px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
+          <button onClick={saveAs} className="rounded px-2 py-1 text-[11px] transition-colors hover:bg-white/10" style={{ color: 'var(--accent)' }}>
+            {t('panel.saveAs')}
+          </button>
+          {saved && <span className="truncate text-[10px]" style={{ color: 'var(--ok)' }} title={saved}>{t('panel.savedTo', { path: saved })}</span>}
+          {saveErr && <span className="truncate text-[10px]" style={{ color: 'var(--bad)' }}>{saveErr}</span>}
+        </div>
       </div>
-      <div className="flex items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: 'var(--hairline)' }}>
+    )
+  }
+  if (!payload) return <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--muted)' }}>{t('panel.generating')}</div>
+
+  const option = {
+    ...payload.option,
+    // 交互增强：滚轮/滑块缩放 + 工具栏（还原、保存图片）
+    toolbox: { feature: { dataZoom: { yAxisIndex: 'none' }, restore: {}, saveAsImage: {} } },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 4 }],
+  }
+  const switchable = ['line', 'bar', 'area', 'stacked_bar', 'grouped_bar', 'scatter', 'pie', 'donut', 'box', 'histogram']
+  return (
+    <div className="flex h-full flex-col">
+      {/* 顶部：图表类型切换 */}
+      <div className="flex items-center gap-2 border-b px-3 py-1.5" style={{ borderColor: 'var(--hairline)' }}>
+        <span className="text-[11px]" style={{ color: 'var(--muted)' }}>{t('panel.chartType')}</span>
+        <Select value={payload.chart_type} onValueChange={switchType} disabled={busy}>
+          <SelectTrigger className="glass-input h-7 w-36 border-0 px-2 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {switchable.map((ct) => (
+              <SelectItem key={ct} value={ct}>{t(`chartTypes.${ct}`)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {busy && <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{t('panel.generating')}</span>}
+      </div>
+      {/* 中部：交互大图 */}
+      <div className="min-h-0 flex-1">
+        <EChart option={option} height="100%" />
+      </div>
+      {/* 底部：导出 */}
+      <div className="flex items-center gap-2 border-t px-3 py-1.5" style={{ borderColor: 'var(--hairline)' }}>
         <button
           onClick={saveAs}
-          className="rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-white/10"
+          className="rounded bg-white/5 px-2.5 py-1 text-[11px] transition-colors hover:bg-white/10"
           style={{ color: 'var(--accent)' }}
         >
           {t('panel.saveAs')}
         </button>
-        {saved && (
-          <span className="truncate text-[10px]" style={{ color: 'var(--ok)' }} title={saved}>
-            {t('panel.savedTo', { path: saved })}
-          </span>
-        )}
+        {saved && <span className="truncate text-[10px]" style={{ color: 'var(--ok)' }} title={saved}>{t('panel.savedTo', { path: saved })}</span>}
         {saveErr && <span className="truncate text-[10px]" style={{ color: 'var(--bad)' }}>{saveErr}</span>}
       </div>
     </div>
@@ -284,6 +319,15 @@ function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartF
     if (xCol) params.x_column = xCol
     if (yCol) params.y_column = yCol
     api.plotData(params).then((r) => setOption(r.data?.option ?? null)).catch((e) => setErr((e as Error).message))
+  }
+
+  // AI 生成图表时，整个面板显示专门交互图表界面（切换/缩放/导出）
+  if (chartFiles && chartFiles.length > 0) {
+    return (
+      <div className="h-full">
+        {chartFiles.map((name) => <ChartFileCard key={name} name={name} />)}
+      </div>
+    )
   }
 
   return (
@@ -323,11 +367,7 @@ function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartF
         {err && <p className="text-[11px] text-destructive">{err}</p>}
       </div>
       <div className="min-w-0 flex-1">
-        {chartFiles && chartFiles.length > 0 ? (
-          <div className="rb-scroll h-full overflow-y-auto pr-1">
-            {chartFiles.map((name) => <ChartFileCard key={name} name={name} />)}
-          </div>
-        ) : option ? (
+        {option ? (
           <EChart option={option} height="100%" />
         ) : (
           <EmptyState

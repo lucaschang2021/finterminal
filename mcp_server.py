@@ -611,7 +611,7 @@ def _save_chart(fig, chart_type: str):
     return f"{save_path}{html_note}"
 
 
-def _save_echarts_option(chart_type: str, df, kwargs: dict, save_path) -> None:
+def _save_echarts_option(chart_type: str, df, kwargs: dict, save_path, file_path: str = "") -> None:
     """保存 ECharts option JSON（charts/xxx.option.json），供前端下边框交互渲染。
 
     仅支持 ECharts 的 12 种类型；其余类型（K线/热力/雷达等）静默跳过，
@@ -627,7 +627,13 @@ def _save_echarts_option(chart_type: str, df, kwargs: dict, save_path) -> None:
         if "\n" in base:
             base = base.split("\n")[0]
         opt_path = Path(base.replace(".png", ".option.json"))
-        opt_path.write_text(json.dumps(opt, ensure_ascii=False, default=str), encoding="utf-8")
+        # 附带绘图参数，供前端在交互界面切换图表类型时重新生成
+        params = {"chart_type": chart_type, "file_path": file_path or ""}
+        for k in ("x_column", "y_column", "y_columns", "value_column", "title"):
+            if kwargs.get(k):
+                params[k] = kwargs.get(k)
+        payload = {"chart_type": chart_type, "option": opt, "params": params}
+        opt_path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
     except Exception:
         pass
 
@@ -655,7 +661,7 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
         fig = charts.build_figure(chart_type, df, **kwargs)
         save_path = _save_chart(fig, chart_type)
         fig = None  # _save_chart 已负责关闭
-        _save_echarts_option(chart_type, df, kwargs, save_path)
+        _save_echarts_option(chart_type, df, kwargs, save_path, file_path)
         # 记录本次生成的图表文件名，供前端在回复中自动展示
         try:
             _name = str(save_path).split("\n")[0].replace("\\", "/").split("/")[-1]
