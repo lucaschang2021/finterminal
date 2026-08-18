@@ -299,9 +299,21 @@ ipcMain.handle('chart:save', async (_e, fileName) => {
     const name = path.basename(String(fileName || ''))
     if (!name) return { ok: false, error: '文件名无效' }
     const fs = require('fs')
-    const dataDir = process.env.FIN_DATA_DIR || path.join(process.env.APPDATA || '', 'FinTerminal')
-    const src = path.join(dataDir, 'charts', name)
-    if (!fs.existsSync(src)) return { ok: false, error: '图表文件不存在' }
+    // 多位置查找数据目录：FIN_DATA_DIR > %APPDATA%/FinTerminal > 安装版 exe 同级 data
+    // （打包后端实际使用 exe 同级 data，必须与主进程查找一致）
+    const exeDir = path.dirname(process.execPath)
+    const candidates = [
+      process.env.FIN_DATA_DIR,
+      path.join(process.env.APPDATA || '', 'FinTerminal'),
+      path.join(exeDir, 'data'),
+      path.join(exeDir, 'resources', 'backend', 'finterminal-backend', 'data'),
+    ].filter(Boolean)
+    let src = ''
+    for (const d of candidates) {
+      const p = path.join(d, 'charts', name)
+      if (fs.existsSync(p)) { src = p; break }
+    }
+    if (!src) return { ok: false, error: '图表文件不存在' }
     const isHtml = name.toLowerCase().endsWith('.html')
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: '另存为图表',
