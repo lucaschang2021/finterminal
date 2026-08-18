@@ -7,7 +7,7 @@
  * 3. 退出时确保 Python 子进程被正确终止
  */
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron')
 const { spawn, execFile } = require('child_process')
 const path = require('path')
 const net = require('net')
@@ -293,6 +293,29 @@ function createWindow(port) {
 }
 
 // 渲染进程询问后端端口 / API 地址 / Token（Token 用于 API 鉴权，勿记录到日志）
+// 另存为图表：从数据目录 charts/ 复制到用户选择的位置
+ipcMain.handle('chart:save', async (_e, fileName) => {
+  try {
+    const name = path.basename(String(fileName || ''))
+    if (!name) return { ok: false, error: '文件名无效' }
+    const fs = require('fs')
+    const dataDir = process.env.FIN_DATA_DIR || path.join(process.env.APPDATA || '', 'FinTerminal')
+    const src = path.join(dataDir, 'charts', name)
+    if (!fs.existsSync(src)) return { ok: false, error: '图表文件不存在' }
+    const isHtml = name.toLowerCase().endsWith('.html')
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: '另存为图表',
+      defaultPath: path.join(app.getPath('desktop'), name),
+      filters: [{ name: isHtml ? 'HTML 交互图表' : 'PNG 图片', extensions: [isHtml ? 'html' : 'png'] }],
+    })
+    if (canceled || !filePath) return { ok: false, canceled: true }
+    fs.copyFileSync(src, filePath)
+    return { ok: true, path: filePath }
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) }
+  }
+})
+
 ipcMain.handle('backend:info', () => ({
   port: backendPort,
   apiBase: `http://127.0.0.1:${backendPort}/api`,

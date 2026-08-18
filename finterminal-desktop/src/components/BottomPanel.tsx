@@ -170,10 +170,13 @@ function EmptyState({
 
 const CHART_TYPES = ['line', 'bar', 'barh', 'stacked_bar', 'grouped_bar', 'scatter', 'bubble', 'pie', 'donut', 'area', 'candlestick', 'box', 'violin', 'histogram', 'heatmap', 'radar', 'waterfall', 'funnel', 'step', 'polar', 'errorbar', 'treemap', 'scatter3d', 'surface', 'technical', 'wordcloud', 'sankey']
 
-/** AI 生成的图表：优先读取配套的 .option.json 用 ECharts 交互渲染，否则降级显示 PNG/HTML */
+/** AI 生成的图表：优先读取配套的 .option.json 用 ECharts 交互渲染，否则降级显示 PNG/HTML；底部可另存为 */
 function ChartFileCard({ name }: { name: string }) {
+  const { t } = useI18n()
   const [option, setOption] = useState<Record<string, unknown> | null>(null)
   const [showFallback, setShowFallback] = useState(false)
+  const [saved, setSaved] = useState<string | null>(null)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
 
   useEffect(() => {
     if (!name.toLowerCase().endsWith('.png')) {
@@ -189,33 +192,62 @@ function ChartFileCard({ name }: { name: string }) {
     return () => { alive = false }
   }, [name])
 
-  if (option) {
-    return (
-      <div className="mb-2 h-48 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-        <EChart option={option} height="100%" />
-      </div>
-    )
+  const saveAs = async () => {
+    setSaveErr(null)
+    setSaved(null)
+    try {
+      const r = await window.finterminal?.saveChart(name)
+      if (r?.ok) setSaved(r.path || '')
+      else if (r?.canceled) { /* 用户取消 */ }
+      else setSaveErr(r?.error || 'Save failed')
+    } catch (e) {
+      setSaveErr((e as Error).message)
+    }
   }
-  if (showFallback) {
-    return (
-      <div className="mb-2 overflow-hidden rounded-lg border bg-background/50" style={{ borderColor: 'var(--hairline)' }}>
-        {name.toLowerCase().endsWith('.png') ? (
-          <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
+
+  const isPng = name.toLowerCase().endsWith('.png')
+  return (
+    <div className="mb-2 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+      <div className="bg-background/50">
+        {option ? (
+          <div className="h-44">
+            <EChart option={option} height="100%" />
+          </div>
+        ) : showFallback ? (
+          isPng ? (
+            <img src={fileUrl(name)} alt={name} className="max-h-44 w-full object-contain" />
+          ) : (
+            <a
+              href={fileUrl(name)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
+            >
+              <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
+              交互图表: {name}
+            </a>
+          )
         ) : (
-          <a
-            href={fileUrl(name)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 px-3 py-2.5 text-xs text-sky-300 hover:underline"
-          >
-            <FileText className="h-3.5 w-3.5" strokeWidth={1.5} />
-            交互图表: {name}
-          </a>
+          <div className="h-44" />
         )}
       </div>
-    )
-  }
-  return <div className="mb-2 h-48 rounded-lg border" style={{ borderColor: 'var(--hairline)' }} />
+      <div className="flex items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: 'var(--hairline)' }}>
+        <button
+          onClick={saveAs}
+          className="rounded px-2 py-0.5 text-[11px] transition-colors hover:bg-white/10"
+          style={{ color: 'var(--accent)' }}
+        >
+          {t('panel.saveAs')}
+        </button>
+        {saved && (
+          <span className="truncate text-[10px]" style={{ color: 'var(--ok)' }} title={saved}>
+            {t('panel.savedTo', { path: saved })}
+          </span>
+        )}
+        {saveErr && <span className="truncate text-[10px]" style={{ color: 'var(--bad)' }}>{saveErr}</span>}
+      </div>
+    </div>
+  )
 }
 
 function ChartDetail({ initialType, chartFiles }: { initialType?: string; chartFiles?: string[] }) {
