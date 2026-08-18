@@ -99,9 +99,11 @@ export const api = {
     request<ApiResult>('/knowledge/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
 }
 
-/** 构造 charts/ 静态文件地址（PNG/HTML） */
+/** 构造 charts/ 静态文件地址（PNG/HTML/JSON），自动附带 API Token（生产模式鉴权必需） */
 export function fileUrl(name: string): string {
-  return `${apiBase}/file?path=${encodeURIComponent(name)}`
+  const q = new URLSearchParams({ path: name })
+  if (apiToken) q.set('token', apiToken)
+  return `${apiBase}/file?${q.toString()}`
 }
 
 /** SSE 流式对话：POST /ask/stream，按 delta 回调追加文本 */
