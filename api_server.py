@@ -18,7 +18,9 @@ from pydantic import BaseModel
 import mcp_server as m
 
 # charts/ 目录（静态图表文件，serve_chart_file 只允许访问该目录）
-CHART_DIR = Path(m.__file__).resolve().parent / "charts"
+# 必须与 mcp_server.CHART_DIR（DATA_DIR/charts）一致：画图写入数据目录，
+# 读取也要从同一目录，否则打包版图表读不到（PNG/option.json 404）
+CHART_DIR = m.CHART_DIR
 
 app = FastAPI(title="FinTerminal API", version="0.1.0")
 

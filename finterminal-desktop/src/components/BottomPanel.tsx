@@ -211,7 +211,15 @@ function ChartFileCard({ name }: { name: string }) {
       <div className="bg-background/50">
         {option ? (
           <div className="h-44">
-            <EChart option={option} height="100%" />
+            <EChart
+              option={{
+                ...option,
+                // 交互增强：滚轮/滑块缩放 + 工具栏（还原、保存图片）
+                toolbox: { feature: { dataZoom: { yAxisIndex: 'none' }, restore: {}, saveAsImage: {} } },
+                dataZoom: [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 4 }],
+              }}
+              height="100%"
+            />
           </div>
         ) : showFallback ? (
           isPng ? (
