@@ -25,12 +25,29 @@ def _col(df, name, default=None):
 def _num_list(df, col):
     out = []
     for v in df[col].tolist():
-        out.append(None if pd.isna(v) else round(float(v), 6))
+        if pd.isna(v):
+            out.append(None)
+            continue
+        try:
+            out.append(round(float(v), 6))
+        except (TypeError, ValueError):
+            out.append(None)
     return out
 
 
 def _cats(df, col):
-    return [str(v) for v in df[col].tolist()]
+    return ["" if pd.isna(v) else str(v) for v in df[col].tolist()]
+
+
+def _clean_rows(df, x, ys):
+    # Drop invalid rows: empty x or all-empty y (merged/blank cells).
+    x_raw = df[x].tolist()
+    y_data = {y: _num_list(df, y) for y in ys}
+    keep = [i for i in range(len(df)) if not pd.isna(x_raw[i]) and any(y_data[y][i] is not None for y in ys)]
+    cats = [str(x_raw[i]) for i in keep]
+    if not cats:
+        raise ValueError("没有有效的非空数据行（文件可能为空白/合并单元格结构）")
+    return cats, keep, y_data
 
 
 def _axis_series(chart_type, df, x_column, y_column, y_columns, title):
@@ -51,11 +68,11 @@ def _axis_series(chart_type, df, x_column, y_column, y_columns, title):
     if not ys:
         raise ValueError("缺少数值列")
 
-    cats = _cats(df, x)
+    cats, keep, y_data = _clean_rows(df, x, ys)
     etype = "bar" if chart_type in ("bar", "barh", "stacked_bar", "grouped_bar") else "line"
     series = []
     for y in ys:
-        s = {"name": y, "type": etype, "data": _num_list(df, y)}
+        s = {"name": y, "type": etype, "data": [y_data[y][i] for i in keep]}
         if chart_type == "area":
             s["areaStyle"] = {}
         if chart_type == "stacked_bar":
@@ -96,14 +113,18 @@ def build(chart_type, df, x_column=None, y_column=None, y_columns=None, value_co
         if not x or not y:
             raise ValueError("散点图需要 x_column 与 y_column")
         size = _col(df, value_column)
-        s = {"name": y, "type": "scatter", "data": [[a, b] for a, b in zip(_cats(df, x), _num_list(df, y))]}
+        pairs = [(a, b) for a, b in zip(_cats(df, x), _num_list(df, y)) if a and b is not None]
+        if not pairs:
+            raise ValueError("没有有效的非空数据点，无法绘制散点图")
+        scat_cats = [a for a, _b in pairs]
+        s = {"name": y, "type": "scatter", "data": pairs}
         if size:
             s["symbolSize"] = lambda v: 8 + abs(v[2]) / 10
         option = {
             "title": {"text": title or f"散点图 - {x} × {y}"},
             "tooltip": {},
             "grid": {"left": 60, "right": 30, "bottom": 60, "top": 60},
-            "xAxis": {"type": "category", "data": _cats(df, x), "name": x},
+            "xAxis": {"type": "category", "data": scat_cats, "name": x},
             "yAxis": {"type": "value", "name": y},
             "series": [s],
         }
@@ -116,7 +137,7 @@ def build(chart_type, df, x_column=None, y_column=None, y_columns=None, value_co
         if not name_col or not val_col:
             raise ValueError("饼图需要 x_column（名称）与 value_column（数值）")
         data = [{"name": n, "value": v} for n, v in zip(_cats(df, name_col), _num_list(df, val_col))
-                if v is not None and v > 0]
+                if n and v is not None and v > 0]
         if not data:
             raise ValueError("饼图缺少正数值")
         radius = ["0%", "70%"] if chart_type == "donut" else "70%"
@@ -138,7 +159,7 @@ def build(chart_type, df, x_column=None, y_column=None, y_columns=None, value_co
             "tooltip": {"trigger": "item"},
             "xAxis": {"type": "category", "data": nums},
             "yAxis": {"type": "value"},
-            "series": [{"type": "boxplot", "data": [df[c].tolist() for c in nums]}],
+            "series": [{"type": "boxplot", "data": [df[c].dropna().tolist() for c in nums]}],
         }
         return {"chart_type": chart_type, "option": option}
 
@@ -148,7 +169,7 @@ def build(chart_type, df, x_column=None, y_column=None, y_columns=None, value_co
         if not col:
             raise ValueError("直方图需要数值列")
         import numpy as np
-        vals = df[col].dropna().tolist()
+        vals = pd.to_numeric(df[col], errors="coerce").dropna().tolist()
         counts, edges = np.histogram(vals, bins=min(20, max(5, int(len(vals) ** 0.5))))
         cats_h = [f"{edges[i]:.2f}~{edges[i+1]:.2f}" for i in range(len(edges) - 1)]
         option = {
