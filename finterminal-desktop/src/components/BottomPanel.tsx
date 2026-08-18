@@ -199,7 +199,10 @@ function ChartFileCard({ name }: { name: string }) {
     setBusy(true)
     setSaveErr(null)
     try {
-      const r = await api.plotData({ ...payload.params, chart_type: newType })
+      // 后端图表接口参数名为 path，而 option.json 里存的是 file_path，需转换；
+      // 同时去掉旧类型的标题，让后端为新类型生成默认标题
+      const { file_path, title: _oldTitle, ...rest } = payload.params || {}
+      const r = await api.plotData({ ...rest, chart_type: newType, path: file_path || '' })
       if (r.data?.option) setPayload({ ...payload, chart_type: newType, option: r.data.option })
     } catch (e) {
       setSaveErr((e as Error).message)
