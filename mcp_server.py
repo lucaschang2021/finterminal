@@ -677,6 +677,44 @@ def _plot(chart_type, file_path, password=None, source="local", days=60, period=
             os.remove(tmp_path)
 
 
+_PLOT_KEYWORDS = ("\u753b\u56fe", "\u753b\u4e2a\u56fe", "\u753b\u4e00\u4e0b", "\u753b\u4e00\u753b", "\u53ef\u89c6\u5316", "\u56fe\u8868", "\u6765\u5f20\u56fe", "\u753b\u5f20\u56fe", "\u56fe\u5206\u6790")
+_CHART_TYPE_HINTS = ("\u6298\u7ebf", "\u67f1\u72b6", "\u997c", "\u6563\u70b9", "K\u7ebf", "k\u7ebf", "\u96f7\u8fbe", "\u70ed\u529b", "\u7bb1\u7ebf", "\u9762\u79ef", "\u7011\u5e03", "\u6f0f\u6597", "\u6811", "\u6851\u57fa", "\u8bcd\u4e91", "3D", "treemap", "sankey", "wordcloud", "line", "bar", "pie", "scatter", "candlestick", "heatmap")
+
+
+def _is_vague_plot_request(query: str) -> bool:
+    """Vague plot request: contains plot intent but no explicit chart type."""
+    if not any(k in query for k in _PLOT_KEYWORDS):
+        return False
+    return not any(t in query.lower() for t in _CHART_TYPE_HINTS)
+
+
+def _extract_file_from_history(history) -> str:
+    """Extract the most recent data file path from conversation history."""
+    if not history:
+        return ""
+    import re
+    for h in reversed(history):
+        content = h.get("content") or ""
+        m = re.search(r'[A-Za-z]:[\\/][^ \n"<>|?*]+\.(?:xlsx|xls|csv|txt|md|pdf|docx)', content)
+        if m:
+            return m.group(0).replace("\\", "/")
+    return ""
+
+
+def _auto_plot(file_path: str) -> str:
+    """Auto plot: text column as x, first numeric column as y; bar if numeric else pie."""
+    try:
+        columns, numeric = _detect_columns(file_path)
+        if not columns:
+            return "\u274c \u672a\u80fd\u8bfb\u53d6\u8be5\u6587\u4ef6\u7684\u5217\u540d\uff0c\u8bf7\u786e\u8ba4\u6587\u4ef6\u53ef\u8bfb\u6216\u6307\u5b9a\u6570\u636e\u5217\u3002"
+        x_col = next((c for c in columns if c not in numeric), columns[0])
+        y_col = numeric[0] if numeric else (columns[1] if len(columns) > 1 else columns[0])
+        chart_type = "bar" if numeric else "pie"
+        return _plot(chart_type, file_path, x_column=x_col, y_column=y_col)
+    except Exception as e:
+        return "\u274c \u81ea\u52a8\u753b\u56fe\u5931\u8d25: " + str(e)
+
+
 def _plot_data(chart_type, file_path, password=None, source="local", days=60, period="daily", **kwargs):
     """生成 ECharts 结构化数据（供前端交互渲染），失败时返回 {"error": ...}。"""
     tmp_path = None
@@ -993,6 +1031,12 @@ def ask(query: str, history=None):
             base_url=DEEPSEEK_BASE_URL,
             timeout=60.0
         )
+
+        # Fast path: vague plot request + file in history -> auto plot, avoid AI slow loop
+        if _is_vague_plot_request(query):
+            fpath = _extract_file_from_history(history) if history else ""
+            if fpath and os.path.exists(fpath):
+                return _auto_plot(fpath)
 
         system_prompt = f"""
 你是 FinTerminal 的 AI 助手，能对本地金融数据文件进行查找、读取、画图和统计分析。
