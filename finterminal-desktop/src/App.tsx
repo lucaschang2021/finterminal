@@ -12,14 +12,27 @@ import ExportPage from './components/pages/ExportPage'
 import FilesPage from './components/pages/FilesPage'
 import KnowledgePage from './components/pages/KnowledgePage'
 import SettingsPage from './components/pages/SettingsPage'
+import { api, type StatisticalArtifact } from './api'
+import { capabilitiesForFile, type ActiveFile } from './lib/active-file'
 
 export default function App() {
   const [view, setView] = useState<ViewKey>('chat')
   const [bottomOpen, setBottomOpen] = useState(false)
   const [chartType, setChartType] = useState<string>()
   const [chartFiles, setChartFiles] = useState<string[]>([])
+  const [statResults, setStatResults] = useState<StatisticalArtifact[]>([])
+  const [activeFile, setActiveFile] = useState<ActiveFile | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
+  const selectActiveFile = (path: string) => {
+    const normalized = path.trim()
+    if (!normalized) return
+    setActiveFile({ path: normalized, detection: '正在识别文件…', capabilities: capabilitiesForFile(normalized) })
+    setBottomOpen(true)
+    api.detect(normalized)
+      .then((r) => setActiveFile({ path: normalized, detection: r.text ?? '文件已识别', capabilities: capabilitiesForFile(normalized) }))
+      .catch((e) => setActiveFile({ path: normalized, detection: `文件体检失败：${(e as Error).message}`, capabilities: capabilitiesForFile(normalized) }))
+  }
 
   // 页面切换：淡入 + 轻微上浮 + 极细缩放（命运2 界面切换节奏）
   useGSAP(() => {
@@ -74,9 +87,18 @@ export default function App() {
         <div className="min-h-0 flex-1 overflow-hidden">
           <div ref={pageRef} className="h-full overflow-y-auto overflow-x-hidden">
             {view === 'chat' && (
-              <ChatView onChartGenerated={(files) => { setChartFiles(files); setBottomOpen(true) }} />
+              <ChatView
+                onFileReferenced={selectActiveFile}
+                onArtifactsGenerated={(artifacts) => {
+                  setChartFiles(artifacts.charts)
+                  setStatResults(artifacts.statistics)
+                  const artifactPath = [...artifacts.statistics].reverse().find((item) => item.file_path)?.file_path
+                  if (artifactPath) selectActiveFile(artifactPath)
+                  setBottomOpen(artifacts.charts.length > 0 || artifacts.statistics.length > 0)
+                }}
+              />
             )}
-            {view === 'files' && <FilesPage />}
+            {view === 'files' && <FilesPage onFileSelected={selectActiveFile} />}
             {view === 'charts' && <ChartsPage onOpenDetail={(t) => { setChartType(t); setBottomOpen(true) }} />}
             {view === 'chain' && <ChainPage />}
             {view === 'knowledge' && <KnowledgePage />}
@@ -84,7 +106,14 @@ export default function App() {
             {view === 'export' && <ExportPage />}
           </div>
         </div>
-        <BottomPanel open={bottomOpen} onOpenChange={setBottomOpen} chartType={chartType} chartFiles={chartFiles} />
+        <BottomPanel
+          open={bottomOpen}
+          onOpenChange={setBottomOpen}
+          chartType={chartType}
+          chartFiles={chartFiles}
+          statResults={statResults}
+          activeFile={activeFile}
+        />
       </main>
 
       <RightBoard />

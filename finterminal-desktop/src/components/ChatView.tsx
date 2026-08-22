@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { MessageSquare, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Clock3, LoaderCircle, MessageSquare, Pencil, Plus, Trash2 } from 'lucide-react'
 
-import { streamAsk } from '@/api'
+import { streamAsk, type GeneratedArtifacts } from '@/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useI18n } from '@/i18n/LanguageContext'
@@ -54,12 +54,13 @@ function relativeTime(ts: number, t: (key: string, vars?: Record<string, string 
   return new Date(ts).toLocaleDateString(lang === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-export default function ChatView({ onChartGenerated }: { onChartGenerated?: (files: string[]) => void }) {
+export default function ChatView({ onArtifactsGenerated, onFileReferenced }: { onArtifactsGenerated?: (artifacts: GeneratedArtifacts) => void; onFileReferenced?: (path: string) => void }) {
   const { t, lang } = useI18n()
   const [threads, setThreads] = useState<ChatThread[]>(loadThreads)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<{ threadId: string; messageTime: number; stage: string; tool?: string; elapsed: number } | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -139,16 +140,33 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
 
   // 解析 AI 回复中生成的图表文件（charts/ 下的 png / html）
   const extractChartFiles = (text: string): string[] => {
-    const re = /(?:[\\/])charts(?:[\\/])[A-Za-z0-9_\-]+\.(png|html)/gi
+    const re = /\bcharts[\\/]([A-Za-z0-9_\-]+\.(?:png|html))/gi
     const out: string[] = []
     let m: RegExpExecArray | null
     while ((m = re.exec(text)) !== null) {
-      const name = m[0].split(/[\\/]/).pop()!
+      const name = m[1]
       if (!out.includes(name)) out.push(name)
     }
-    return out
+    const pngFiles = out.filter((name) => name.toLowerCase().endsWith('.png'))
+    return pngFiles.length > 0 ? pngFiles : out
   }
-  const lastChartFilesRef = useRef<string[]>([])
+  const lastArtifactsKeyRef = useRef('')
+  const hydratedThreadsRef = useRef(new Set<string>())
+
+  // 恢复旧对话时，SSE 成果帧不会重放；从已保存的最终回复重建面板成果。
+  useEffect(() => {
+    if (!activeThread || busy || hydratedThreadsRef.current.has(activeThread.id)) return
+    hydratedThreadsRef.current.add(activeThread.id)
+    const latest = [...activeThread.messages].reverse().find((message) => message.role === 'assistant' && message.text.trim())
+    if (!latest || !onArtifactsGenerated) return
+    const charts = extractChartFiles(latest.text)
+    if (!charts.length) return
+    onArtifactsGenerated({
+      charts,
+      statistics: [{ analysis: 'describe', file_path: '', result: latest.text }],
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, busy])
 
   const patchThread = (id: string, fn: (t: ChatThread) => ChatThread) => {
     setThreads((prev) => prev.map((t) => (t.id === id ? fn(t) : t)))
@@ -204,11 +222,14 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
   const send = async (raw?: string) => {
     const q = (raw ?? input).trim()
     if (!q || busy || !activeThread) return
+    // 用户在对话中引用本地数据文件时，同步到下边框工作台。
+    const referencedFile = q.match(/(?:[A-Za-z]:[\\/][^\r\n"']+|[^\s"']+\.(?:csv|tsv|xlsx|xls|json|parquet|pdf|docx?|md|txt))/i)?.[0]
+    if (referencedFile) onFileReferenced?.(referencedFile.trim())
     setInput('')
-    // 多轮记忆：带上线程中最近 20 条历史消息（不含本次输入）
+    // 最近上下文足以维持多轮语义，也能显著减少每次请求的提示词体积。
     const history = activeThread.messages
       .filter((m) => m.text)
-      .slice(-20)
+      .slice(-10)
       .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))
     const id = Date.now()
     const threadId = activeThread.id
@@ -222,33 +243,60 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
       messages: [...t.messages, userMsg, asstMsg],
     }))
     setBusy(true)
+    setProgress({ threadId, messageTime: id + 1, stage: 'accepted', elapsed: 0 })
     try {
       let acc = ''
+      let hasArtifacts = false
       await streamAsk(q, (delta) => {
         acc += delta
         setThreads((prev) => prev.map((t) => {
           if (t.id !== threadId) return t
-          const msgs = t.messages.map((m, i) => (i === t.messages.length - 1 ? { ...m, text: acc } : m))
+          const msgs = t.messages.map((m) => (m.time === id + 1 ? { ...m, text: acc } : m))
           return { ...t, messages: msgs }
         }))
-        // AI 生成了图表文件 → 通知外层打开底部面板展示
-        if (onChartGenerated) {
-          const files = extractChartFiles(acc)
-          if (files.length > 0 && files.join('|') !== lastChartFilesRef.current.join('|')) {
-            lastChartFilesRef.current = files
-            onChartGenerated(files)
+        // 兼容旧后端：从文本路径中识别图表；新版后端会另发结构化成果帧。
+        if (onArtifactsGenerated) {
+          const charts = extractChartFiles(acc)
+          const key = `${charts.join('|')}::`
+          if (charts.length > 0 && key !== lastArtifactsKeyRef.current) {
+            lastArtifactsKeyRef.current = key
+            onArtifactsGenerated({ charts, statistics: [] })
           }
         }
-      }, 120000, history)
+      }, 45000, history, (status) => {
+        setProgress({ threadId, messageTime: id + 1, ...status })
+      }, (artifacts) => {
+        hasArtifacts = artifacts.charts.length > 0 || artifacts.statistics.length > 0
+        const key = artifacts.charts.join('|') + '::' + artifacts.statistics.map((item) => [item.analysis, item.file_path, item.result.length].join(':')).join('|')
+        if (onArtifactsGenerated && key !== lastArtifactsKeyRef.current) {
+          lastArtifactsKeyRef.current = key
+          onArtifactsGenerated(artifacts)
+        }
+      })
+
+      // 逐帧更新之外再做一次最终提交，避免父面板展开/React 批处理导致空回复残留。
+      const finalText = acc.trim() || (
+        hasArtifacts
+          ? t('chat.resultsReady')
+          : t('chat.noResponse')
+      )
+      patchThread(threadId, (thread) => ({
+        ...thread,
+        updatedAt: Date.now(),
+        messages: thread.messages.map((message) => (
+          message.time === id + 1 ? { ...message, text: finalText } : message
+        )),
+      }))
     } catch (e) {
       const err = (e as Error).message
       setThreads((prev) => prev.map((t) => {
         if (t.id !== threadId) return t
-        const msgs = t.messages.map((m, i) => (i === t.messages.length - 1 ? { ...m, text: err } : m))
+        const msgs = t.messages.map((m) => (m.time === id + 1 ? { ...m, text: err } : m))
         return { ...t, messages: msgs }
       }))
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -380,7 +428,24 @@ export default function ChatView({ onChartGenerated }: { onChartGenerated?: (fil
               >
                     {m.role === 'user' ? m.text : (
                       <>
-                        {m.text ? <Markdown text={m.text} /> : <span style={{ color: 'var(--muted)' }}>{t('chat.thinking')}</span>}
+                        {m.text ? <Markdown text={m.text} /> : progress?.messageTime === m.time ? (
+                          <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--muted)' }} role="status" aria-live="polite">
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            <span>
+                              {progress.stage === 'tool'
+                                ? t('chat.usingTool', { tool: progress.tool || t('chat.localTool') })
+                                : progress.stage === 'finalizing'
+                                  ? t('chat.finalizing')
+                                  : progress.stage === 'routing'
+                                    ? t('chat.routing')
+                                    : t('chat.thinking')}
+                            </span>
+                            <span className="inline-flex items-center gap-1 tabular-nums opacity-70">
+                              <Clock3 className="h-3 w-3" aria-hidden="true" />
+                              {progress.elapsed.toFixed(1)}s
+                            </span>
+                          </div>
+                        ) : <span style={{ color: 'var(--muted)' }}>{t('chat.noResponse')}</span>}
                         {m.text && (
                           <div className="source-tag mt-2 border-t pt-1.5" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
                             {t('chat.sourceTag')}

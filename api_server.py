@@ -321,38 +321,89 @@ def _chunk_text(text: str, size: int = 14):
 
 @app.post("/api/ask/stream")
 def ask_stream(req: AskReq):
-    """SSE 流式对话：立即返回流，后台执行 ask；执行期间推送状态帧，完成后再按块推送结果。
-    避免 DeepSeek 慢/挂起时前端长期停留在"思考中"。"""
+    """SSE 对话：立即反馈阶段、持续发送心跳，完成后输出结果。"""
     import json
     import queue
     import threading
+    import time
 
     q: queue.Queue = queue.Queue()
 
     def worker():
+        statistics = []
+        referenced_file = ['']
+
+        def on_event(event):
+            if event.get("stage") == "tool_result":
+                args = event.get("arguments") or {}
+                candidate = args.get("file_path") or args.get("path")
+                if candidate:
+                    referenced_file[0] = str(candidate)
+                if event.get("tool") == "analyze" and event.get("result"):
+                    statistics.append({
+                        "analysis": str(args.get("analysis") or "describe"),
+                        "file_path": str(args.get("file_path") or ""),
+                        "result": str(event["result"]),
+                    })
+                q.put(("status", {
+                    "stage": "tool_complete",
+                    "tool": event.get("tool"),
+                    "round": event.get("round"),
+                }))
+                return
+            q.put(("status", event))
+
         try:
             before = set(getattr(m, "_last_charts", []))
-            result = m.ask(req.query, history=req.history)
+            result = m.ask_with_events(
+                req.query,
+                history=req.history,
+                event_callback=on_event,
+            )
             new = [f for f in getattr(m, "_last_charts", []) if f not in before]
+            # 即使模型通过 read/plot 自行总结、没有显式调用 analyze，也把对话中的
+            # 统计性结论同步为可切换成果，并沿用工具实际使用的文件路径。
+            if not statistics and referenced_file[0] and result:
+                statistics.append({
+                    "analysis": "describe",
+                    "file_path": referenced_file[0],
+                    "result": str(result),
+                })
             if new:
                 result = f"{result}\n\n📊 图表文件: charts/{', charts/'.join(new)}"
         except Exception as e:
             q.put(("done", f"❌ {e}"))
             return
+        q.put(("artifacts", {"charts": new, "statistics": statistics}))
         q.put(("result", result or ""))
 
     def gen():
+        started = time.monotonic()
         t = threading.Thread(target=worker, daemon=True)
         t.start()
-        # 状态帧：让前端立即知道任务在跑（前端忽略无 delta 的状态帧）
-        yield f"data: {json.dumps({'delta': '', 'status': 'thinking'}, ensure_ascii=False)}\n\n"
-        kind, payload = q.get()
-        if kind == "done":
-            yield f"data: {json.dumps({'delta': payload, 'done': True}, ensure_ascii=False)}\n\n"
+        current = {"stage": "accepted"}
+        yield f"data: {json.dumps({'status': current, 'elapsed': 0}, ensure_ascii=False)}\n\n"
+        while True:
+            try:
+                kind, payload = q.get(timeout=0.8)
+            except queue.Empty:
+                yield f"data: {json.dumps({'status': current, 'elapsed': round(time.monotonic() - started, 1)}, ensure_ascii=False)}\n\n"
+                continue
+            if kind == "status":
+                current = payload if isinstance(payload, dict) else {"stage": str(payload)}
+                yield f"data: {json.dumps({'status': current, 'elapsed': round(time.monotonic() - started, 1)}, ensure_ascii=False)}\n\n"
+                continue
+            if kind == "done":
+                yield f"data: {json.dumps({'delta': payload, 'done': True}, ensure_ascii=False)}\n\n"
+                return
+            if kind == "artifacts":
+                yield f"data: {json.dumps({'artifacts': payload}, ensure_ascii=False)}\n\n"
+                continue
+            yield f"data: {json.dumps({'status': {'stage': 'finalizing'}, 'elapsed': round(time.monotonic() - started, 1)}, ensure_ascii=False)}\n\n"
+            for chunk in _chunk_text(payload):
+                yield f"data: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
             return
-        for chunk in _chunk_text(payload):
-            yield f"data: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'delta': '', 'done': True}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

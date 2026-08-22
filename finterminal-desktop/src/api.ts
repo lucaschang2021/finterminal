@@ -106,8 +106,33 @@ export function fileUrl(name: string): string {
   return `${apiBase}/file?${q.toString()}`
 }
 
-/** SSE 流式对话：POST /ask/stream，按 delta 回调追加文本 */
-export async function streamAsk(query: string, onDelta: (delta: string) => void, timeoutMs = 120000, history?: { role: string; content: string }[]): Promise<void> {
+export interface StreamStatus {
+  stage: 'accepted' | 'routing' | 'thinking' | 'tool' | 'tool_complete' | 'synthesizing' | 'finalizing' | string
+  tool?: string
+  round?: number
+  elapsed: number
+}
+
+export interface StatisticalArtifact {
+  analysis: string
+  file_path: string
+  result: string
+}
+
+export interface GeneratedArtifacts {
+  charts: string[]
+  statistics: StatisticalArtifact[]
+}
+
+/** SSE 对话：按 delta 追加文本，并通过回调提供阶段状态和结构化成果。 */
+export async function streamAsk(
+  query: string,
+  onDelta: (delta: string) => void,
+  timeoutMs = 45000,
+  history?: { role: string; content: string }[],
+  onStatus?: (status: StreamStatus) => void,
+  onArtifacts?: (artifacts: GeneratedArtifacts) => void,
+): Promise<void> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -134,15 +159,32 @@ export async function streamAsk(query: string, onDelta: (delta: string) => void,
         const payload = frame.slice(6).trim()
         if (payload === '[DONE]') return
         try {
-          const obj = JSON.parse(payload) as { delta?: string; done?: boolean }
-          if (obj.done) return
+          const obj = JSON.parse(payload) as {
+            delta?: string
+            done?: boolean
+            status?: Omit<StreamStatus, 'elapsed'>
+            artifacts?: GeneratedArtifacts
+            elapsed?: number
+          }
           if (obj.delta) onDelta(obj.delta)
+          if (obj.status && onStatus) onStatus({ ...obj.status, elapsed: obj.elapsed ?? 0 })
+          if (obj.artifacts && onArtifacts) {
+            const statistics = (obj.artifacts.statistics || []).map((item) => (
+              typeof item === 'string'
+                ? { analysis: 'describe', file_path: '', result: item }
+                : item
+            ))
+            onArtifacts({ charts: obj.artifacts.charts || [], statistics })
+          }
+          if (obj.done) return
         } catch { /* 忽略非 JSON 帧 */ }
       }
     }
+    if (buf.trim()) throw new Error('流式响应意外结束，请重试')
+    throw new Error('服务未返回完成信号，请重试')
   } catch (e) {
     if ((e as Error).name === 'AbortError') {
-      throw new Error('请求超时（120 秒无响应），请稍后重试')
+      throw new Error('请求超时（' + Math.round(timeoutMs / 1000) + ' 秒未完成），请检查网络或稍后重试')
     }
     throw e
   } finally {

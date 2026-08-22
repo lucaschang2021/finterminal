@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """HTTP API 桥（api_server.py）回归测试。"""
+import json
 import os
 import sys
 
@@ -72,6 +73,53 @@ def test_chart_file_served_within_charts_dir(client, tmp_path, monkeypatch):
 def test_ask_route(client):
     r = client.post("/api/ask", json={"query": "帮我看看这个"}).json()
     assert r["ok"] and ("没太理解" in r["text"] or "当前上下文" in r["text"])
+
+
+def test_ask_stream_reports_progress_and_combined_artifacts(client, monkeypatch):
+    """一次请求可同时返回图表和统计成果，并保留最终文本帧。"""
+    monkeypatch.setattr(api.m, "_last_charts", [])
+
+    def fake_ask(query, history=None, event_callback=None):
+        assert query == "画图并做统计"
+        assert history == [{"role": "user", "content": "桌面上的数据"}]
+        event_callback({"stage": "routing"})
+        event_callback({"stage": "tool", "tool": "plot", "round": 1})
+        api.m._last_charts.append("line_demo.png")
+        event_callback({"stage": "tool_result", "tool": "plot", "round": 1, "result": "图表完成"})
+        event_callback({"stage": "tool", "tool": "analyze", "round": 1})
+        event_callback({"stage": "tool_result", "tool": "analyze", "round": 1, "result": "统计摘要"})
+        return "图表与统计分析均已完成"
+
+    monkeypatch.setattr(api.m, "ask_with_events", fake_ask)
+    response = client.post(
+        "/api/ask/stream",
+        json={
+            "query": "画图并做统计",
+            "history": [{"role": "user", "content": "桌面上的数据"}],
+        },
+    )
+
+    assert response.status_code == 200
+    frames = [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    stages = [frame.get("status", {}).get("stage") for frame in frames]
+    assert "accepted" in stages
+    assert "routing" in stages
+    assert "tool" in stages
+    assert "tool_complete" in stages
+    assert "finalizing" in stages
+    artifact_frames = [frame["artifacts"] for frame in frames if "artifacts" in frame]
+    assert artifact_frames == [{
+        "charts": ["line_demo.png"],
+        "statistics": ["统计摘要"],
+    }]
+    final_text = "".join(frame.get("delta", "") for frame in frames)
+    assert "图表与统计分析均已完成" in final_text
+    assert "charts/line_demo.png" in final_text
+    assert any(frame.get("done") is True for frame in frames)
 
 
 def test_cors_allows_electron_file_origin(client):

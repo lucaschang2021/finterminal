@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import {
@@ -8,8 +8,8 @@ import {
   Ruler, Square, Target, TrendingUp, Waves, type LucideIcon,
 } from 'lucide-react'
 
-import { api } from '@/api'
 import { useI18n } from '@/i18n/LanguageContext'
+import { useCapabilities } from '@/lib/capabilities'
 import { cn } from '@/lib/utils'
 
 const CHART_META: Record<string, { icon: LucideIcon; labelKey: string }> = {
@@ -44,9 +44,8 @@ const CHART_META: Record<string, { icon: LucideIcon; labelKey: string }> = {
 
 export default function ChartsPage({ onOpenDetail }: { onOpenDetail: (chartType: string) => void }) {
   const { t } = useI18n()
-  const [types, setTypes] = useState<string[]>([])
+  const { chartTypes: types, error: err } = useCapabilities()
   const [path, setPath] = useState('')
-  const [err, setErr] = useState('')
   const gridRef = useRef<HTMLDivElement>(null)
 
   // 卡片网格：中心向外涟漪式入场
@@ -69,11 +68,6 @@ export default function ChartsPage({ onOpenDetail }: { onOpenDetail: (chartType:
     return () => mm.revert()
   }, { scope: gridRef, dependencies: [types.length] })
 
-  useEffect(() => {
-    api.health()
-      .then((r) => setTypes(r.data?.charts ?? []))
-      .catch((e) => setErr((e as Error).message))
-  }, [])
 
   return (
     <div className="p-5">

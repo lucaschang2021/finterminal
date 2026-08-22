@@ -224,7 +224,7 @@ async function startBackend() {
     stdio: isDev ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   }
 
-  if (require('fs').existsSync(backendExe)) {
+  if (app.isPackaged && require('fs').existsSync(backendExe)) {
     // 生产：pyinstaller 打包的后端可执行文件
     backendProc = spawn(backendExe, ['--port', String(backendPort)], spawnOpts)
     log('启动打包后端:', backendExe, '端口', backendPort)
@@ -293,27 +293,15 @@ function createWindow(port) {
 }
 
 // 渲染进程询问后端端口 / API 地址 / Token（Token 用于 API 鉴权，勿记录到日志）
-// 另存为图表：从数据目录 charts/ 复制到用户选择的位置
-ipcMain.handle('chart:save', async (_e, fileName) => {
+// 另存为图表：渲染进程从已鉴权的后端读取当前文件，再把实际内容交给主进程保存。
+// 这样开发版与安装版无需猜测后端数据目录，用户选择路径后即可可靠导出。
+ipcMain.handle('chart:save', async (_e, fileName, fileData) => {
   try {
     const name = path.basename(String(fileName || ''))
-    if (!name) return { ok: false, error: '文件名无效' }
-    const fs = require('fs')
-    // 多位置查找数据目录：FIN_DATA_DIR > %APPDATA%/FinTerminal > 安装版 exe 同级 data
-    // （打包后端实际使用 exe 同级 data，必须与主进程查找一致）
-    const exeDir = path.dirname(process.execPath)
-    const candidates = [
-      process.env.FIN_DATA_DIR,
-      path.join(process.env.APPDATA || '', 'FinTerminal'),
-      path.join(exeDir, 'data'),
-      path.join(exeDir, 'resources', 'backend', 'finterminal-backend', 'data'),
-    ].filter(Boolean)
-    let src = ''
-    for (const d of candidates) {
-      const p = path.join(d, 'charts', name)
-      if (fs.existsSync(p)) { src = p; break }
-    }
-    if (!src) return { ok: false, error: '图表文件不存在' }
+    if (!name || !fileData) return { ok: false, error: '图表数据无效' }
+    const bytes = Buffer.from(fileData)
+    if (!bytes.length) return { ok: false, error: '图表数据为空' }
+    if (bytes.length > 100 * 1024 * 1024) return { ok: false, error: '图表文件过大，无法导出' }
     const isHtml = name.toLowerCase().endsWith('.html')
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: '另存为图表',
@@ -321,7 +309,7 @@ ipcMain.handle('chart:save', async (_e, fileName) => {
       filters: [{ name: isHtml ? 'HTML 交互图表' : 'PNG 图片', extensions: [isHtml ? 'html' : 'png'] }],
     })
     if (canceled || !filePath) return { ok: false, canceled: true }
-    fs.copyFileSync(src, filePath)
+    require('fs').writeFileSync(filePath, bytes)
     return { ok: true, path: filePath }
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) }

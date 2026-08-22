@@ -887,8 +887,17 @@ def _dispatch_tool(tool_name, tool_args):
     raise ValueError(f"未知工具: {tool_name}")
 
 
-@mcp.tool
-def ask(query: str, history=None):
+def _ask_internal(query: str, history=None, event_callback=None):
+    def emit(stage: str, **details):
+        if not event_callback:
+            return
+        try:
+            event_callback({"stage": stage, **details})
+        except Exception:
+            pass
+
+    emit("routing")
+
     # 加载 session
     session = load_session()
 
@@ -1074,13 +1083,13 @@ def ask(query: str, history=None):
 """
 
         messages = [{"role": "system", "content": system_prompt}]
-        # 多轮记忆：前端传来的历史消息（最多保留最近 20 条，单条截断 2000 字符）
+        # 保留足够的最近上下文，同时限制提示词体积以缩短首 token 等待。
         if history:
-            for h in history[-20:]:
+            for h in history[-10:]:
                 role = h.get("role") if isinstance(h, dict) else None
                 content = h.get("content") if isinstance(h, dict) else None
                 if role in ("user", "assistant") and content:
-                    messages.append({"role": role, "content": str(content)[:2000]})
+                    messages.append({"role": role, "content": str(content)[:1200]})
         messages.append({"role": "user", "content": query})
         tools = [
             {"type": "function", "function": {"name": "search", "description": "搜索文件（keyword 留空则列出数据文件）", "parameters": {"type": "object", "properties": {"keyword": {"type": "string"}, "directory": {"type": "string"}, "recursive": {"type": "boolean"}}}}},
@@ -1101,6 +1110,7 @@ def ask(query: str, history=None):
         ]
 
         for round_idx in range(1, MAX_TOOL_ROUNDS + 1):
+            emit("thinking" if round_idx == 1 else "synthesizing", round=round_idx)
             response = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=messages,
@@ -1126,11 +1136,13 @@ def ask(query: str, history=None):
             # 执行所有工具并把结果写回对话，供模型继续决策
             tool_results = []
             for tc in message.tool_calls:
+                emit("tool", tool=tc.function.name, round=round_idx)
                 try:
                     tool_args = json.loads(tc.function.arguments or "{}")
                     result = _dispatch_tool(tc.function.name, tool_args)
                 except Exception as e:
                     result = f"❌ 工具 {tc.function.name} 执行失败: {e}"
+                emit("tool_result", tool=tc.function.name, round=round_idx, result=str(result), arguments=tool_args)
                 tool_results.append(result)
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
@@ -1143,6 +1155,16 @@ def ask(query: str, history=None):
 
     except Exception as e:
         return f"❌ 调用失败: {e!s}"
+
+
+def ask_with_events(query: str, history=None, event_callback=None):
+    """供 HTTP 流式接口使用，不改变 MCP 工具的公开参数。"""
+    return _ask_internal(query, history=history, event_callback=event_callback)
+
+
+@mcp.tool
+def ask(query: str, history=None):
+    return _ask_internal(query, history=history)
 
 
 # ==================== Phase 7: 实时数据源 / 多模态 / RAG 知识库 ====================

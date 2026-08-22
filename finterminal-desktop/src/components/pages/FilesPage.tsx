@@ -17,7 +17,7 @@ function defaultHome(): string {
 }
 const HOME = defaultHome()
 
-export default function FilesPage() {
+export default function FilesPage({ onFileSelected }: { onFileSelected?: (path: string) => void }) {
   const { t } = useI18n()
   const [path, setPath] = useState(() => localStorage.getItem('ft_files_path') || HOME)
   const [list, setList] = useState<string[]>([])
@@ -42,6 +42,7 @@ export default function FilesPage() {
   }
 
   const detect = () => {
+    if (detectTarget) onFileSelected?.(detectTarget)
     setErr('')
     api.detect(detectTarget).then((r) => setDetectRes(r.text ?? '')).catch((e) => setErr((e as Error).message))
   }

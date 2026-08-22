@@ -12,7 +12,7 @@ import { stripEmoji } from '@/lib/utils'
 
 function extractPngs(text: string): string[] {
   const out: string[] = []
-  const re = /(?:[\\/])charts(?:[\\/])[A-Za-z0-9_\-]+\.png/gi
+  const re = /\bcharts[\\/][A-Za-z0-9_\-]+\.png/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     const name = m[0].split(/[\\/]/).pop()!
