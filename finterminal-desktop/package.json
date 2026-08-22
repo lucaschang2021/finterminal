@@ -1,6 +1,6 @@
 {
   "name": "finterminal-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "FinTerminal 桌面应用 - 本地金融数据终端",
   "main": "electron/main.js",
   "author": "FinTerminal",
