@@ -1,0 +1,77 @@
+name: Release gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: finterminal-desktop/package-lock.json
+
+      - name: Verify version metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import tomllib
+          from pathlib import Path
+
+          with Path('pyproject.toml').open('rb') as f:
+              py_version = tomllib.load(f)['project']['version']
+          with Path('finterminal-desktop/package.json').open(encoding='utf-8') as f:
+              desktop_version = json.load(f)['version']
+
+          if py_version != desktop_version:
+              raise SystemExit(f'version mismatch: Python={py_version}, desktop={desktop_version}')
+
+          ref = os.environ.get('GITHUB_REF_NAME', '')
+          if ref.startswith('v') and ref != f'v{py_version}':
+              raise SystemExit(f'tag {ref} does not match project version v{py_version}')
+
+          print(f'release metadata aligned at {py_version}')
+          PY
+
+      - name: Build Python distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Build desktop renderer
+        working-directory: finterminal-desktop
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload Python distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: finterminal-python-dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Upload desktop renderer
+        uses: actions/upload-artifact@v4
+        with:
+          name: finterminal-desktop-renderer
+          path: finterminal-desktop/dist/**
+          if-no-files-found: error

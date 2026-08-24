@@ -2,15 +2,13 @@
 
 **Local-first AI financial research infrastructure built around MCP, quantitative analysis, RAG, agentic research, and auditable data provenance.**
 
-[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0](LICENSE)
+[简体中文](README.zh-CN.md) · [Architecture](docs/ARCHITECTURE.md) · [Development](docs/DEVELOPMENT.md) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0](LICENSE)
 
-> **Status:** FinTerminal is an early-stage open-source project. Interfaces, packaging, and research workflows may evolve quickly. Feedback, bug reports, integrations, and contributions are welcome.
+> **Status:** FinTerminal is an early-stage open-source project. Interfaces and research workflows may evolve quickly. Feedback, bug reports, integrations, and contributions are welcome.
 
 ## Why FinTerminal?
 
 Financial research often lives across spreadsheets, PDFs, market-data websites, notebooks, charting tools, and AI chat windows. FinTerminal brings those workflows into one local-first research layer that AI clients can access through the Model Context Protocol (MCP).
-
-The project intentionally exposes a compact set of high-level MCP tools while keeping richer capabilities behind them. The goal is to reduce tool-selection overhead for agents without giving up serious financial-analysis functionality.
 
 FinTerminal can be used as:
 
@@ -18,7 +16,7 @@ FinTerminal can be used as:
 - a **Windows desktop research terminal** with a local Python backend;
 - a **quantitative analysis toolkit** for common research workflows;
 - a **local RAG knowledge base** with source attribution;
-- an **agentic research workflow** that combines market data, technical analysis, forecasting, documents, and model-generated synthesis;
+- an **agentic research workflow** combining market data, documents, indicators, forecasts, and AI synthesis;
 - an **auditable data-provenance layer** using SHA-256 history and optional RFC3161 timestamp anchoring.
 
 ## Core capabilities
@@ -27,13 +25,13 @@ FinTerminal can be used as:
 |---|---|
 | Local data | CSV, Excel, Word, PDF, text, image/OCR ingestion, validation, cleaning, and file search |
 | Visualization | 27+ built-in chart types, static output, interactive Plotly HTML, technical-analysis charts |
-| Quant research | Descriptive statistics, correlation, group-by analysis, OLS, robust standard errors, hypothesis tests, VIF, event studies, DID, trend analysis, and backtesting |
-| Market data | Quotes, multi-period K-lines, technical indicators, caching, provider fallback, and optional cross-checking |
+| Quant research | Descriptive statistics, correlation, OLS, robust standard errors, tests, VIF, event studies, DID, trend analysis, and backtesting |
+| Market data | Quotes, multi-period K-lines, indicators, caching, provider fallback, and optional cross-checking |
 | Forecasting | Linear, ARIMA, and ETS forecasting with automatic model selection where supported |
 | RAG | Local vector retrieval, BM25 hybrid retrieval, reciprocal-rank fusion, document lifecycle operations, and citations |
-| Agentic research | Multi-step research reports combining market data, indicators, forecasts, knowledge-base evidence, and AI synthesis with graceful degradation |
+| Agentic research | Multi-step research reports with graceful degradation when a provider or research step fails |
 | Data provenance | File-change history, SHA-256 hash chaining, integrity verification, snapshots, and RFC3161 timestamp anchoring |
-| Extensibility | Plugins for data sources, analysis types, and chart types without expanding the public MCP surface unnecessarily |
+| Extensibility | Plugins for data sources, analysis types, and chart types |
 | Desktop | Electron + React + TypeScript interface backed by a packaged local FastAPI/Python service |
 
 ## MCP surface
@@ -51,44 +49,58 @@ FinTerminal exposes eight high-level tools:
 | `chain` | Track and verify data provenance and timestamp anchors |
 | `ask` | Natural-language orchestration across FinTerminal capabilities |
 
-This compact surface is deliberate: agents see a small set of stable research primitives while FinTerminal handles lower-level routing internally.
+The compact surface is deliberate: agents see a small set of stable research primitives while lower-level routing stays internal.
 
 ## Quick start
 
-### 1. Clone the repository
+### Python / MCP service
+
+FinTerminal currently targets **Python 3.13+**.
 
 ```bash
 git clone https://github.com/lucaschang2021/finterminal.git
 cd finterminal
-```
-
-### 2. Create an isolated Python environment
-
-```bash
 python -m venv .venv
 ```
 
-Activate it with the command appropriate for your operating system, then install the dependencies used by the Python service.
+Activate the virtual environment, then install the project:
 
-> Dependency and packaging cleanup is ongoing. Until a fully reproducible installation path is published, treat `main` as development software and review the repository configuration before using external model or market-data providers.
+```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e .
+```
 
-### 3. Configure optional providers
+For development and tests:
 
-Use `config.example.json` as the starting point for local configuration. Never commit API keys or credentials.
+```bash
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
+```
 
-### 4. Desktop development
+Optional feature groups are declared in `pyproject.toml`, including `market`, `kb`, `vision`, `charts`, `llm`, and `anchor`. A broad environment can be installed with:
+
+```bash
+python -m pip install -e ".[all,dev]"
+```
+
+Use `config.example.json` as the starting point for provider configuration. Never commit credentials or private datasets.
+
+### Desktop development
 
 ```bash
 cd finterminal-desktop
-npm install
+npm ci
 npm run electron:dev
 ```
 
-The desktop application uses Electron 33, React 18, TypeScript, Vite, ECharts, and a local FastAPI/Python backend. Production packaging builds the backend with PyInstaller and launches it as a child process from Electron.
+For a CI-style renderer build:
+
+```bash
+npm run build
+```
 
 ## Desktop architecture
-
-The desktop application follows a local-first architecture:
 
 ```text
 Electron main process
@@ -97,7 +109,7 @@ Electron main process
         |       |
         |       +--> research tools
         |       +--> market-data providers
-        |       +--> RAG / local data
+        |       +--> knowledge / local data
         |       +--> charts / reports / provenance
         |
         +--> React renderer
@@ -114,86 +126,59 @@ Important implementation choices include:
 - graceful backend shutdown with process cleanup fallbacks;
 - restricted file-serving behavior for generated outputs.
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the broader system model.
+
 ## Quantitative research
 
-The unified analysis layer includes workflows for:
+The analysis layer includes workflows for descriptive statistics, Pearson correlation, grouped statistics, OLS regression, robust standard errors, hypothesis tests, trend/CAGR analysis, VIF, event studies, difference-in-differences, strategy backtesting, and report export.
 
-- descriptive statistics;
-- Pearson correlation and significance testing;
-- grouped statistics;
-- OLS regression and robust standard errors;
-- t-tests, ANOVA, and non-parametric tests where supported;
-- trend and CAGR analysis;
-- variance inflation factors;
-- event-study abnormal returns and CAR;
-- difference-in-differences estimation;
-- signal-based strategy backtesting;
-- research-report export to Markdown, DOCX, and PDF.
-
-FinTerminal is research software. Statistical output should be independently validated before it is used for academic publication, investment decisions, or production systems.
+FinTerminal is research software. Statistical output should be independently validated before academic publication, investment decisions, or production use.
 
 ## RAG and agentic research
 
-FinTerminal includes a local knowledge layer combining semantic retrieval and BM25, with reciprocal-rank fusion and source attribution. Documents can be added, updated, removed, listed, and cleared through the research workflow.
-
-The `ask` orchestration layer can combine current market data with historical research material. Agentic report generation is designed to degrade gracefully: if a market-data, charting, or forecasting step fails, remaining sections can continue and the missing component is identified rather than silently fabricated.
+FinTerminal includes a local knowledge layer combining semantic retrieval and BM25 with reciprocal-rank fusion and source attribution. The `ask` orchestration layer can combine current market data with historical research material and is designed to degrade visibly rather than silently fabricate missing sections.
 
 ## Data provenance
 
-Research reproducibility is a first-class goal. FinTerminal can track file changes in a SHA-256-linked history, verify integrity, maintain snapshots, and optionally anchor a chain head using RFC3161 trusted timestamps.
+FinTerminal can track file changes in a SHA-256-linked history, verify integrity, maintain snapshots, and optionally anchor a chain head using RFC3161 trusted timestamps.
 
-This is intended to help researchers answer questions such as:
-
-- Which version of a dataset was used for an analysis?
-- Has a tracked file changed since a previous research step?
-- Can a research artifact be shown to have existed before a particular trusted timestamp?
-
-It is **not** a blockchain network, custody system, or substitute for institutional compliance controls.
-
-## Plugin system
-
-The `plugins/` architecture allows contributors to extend selected capabilities without continuously increasing the number of MCP tools exposed to agents. Current extension areas include market-data providers, analysis types, and chart types.
-
-This is one of the areas where external contributions are especially welcome.
+This is intended to improve research reproducibility. It is **not** a blockchain network, custody system, or substitute for institutional compliance controls.
 
 ## Project structure
 
 ```text
 finterminal/
-├── server.py                 # MCP entry point
-├── api_server.py             # local HTTP/FastAPI bridge
+├── mcp_server.py             # MCP service and orchestration
+├── api_server.py             # local FastAPI bridge
+├── reader.py                 # file ingestion and parsing
+├── routing.py                # intent/data-source routing
 ├── analysis.py               # statistical analysis
 ├── charts.py                 # visualization
+├── market_data.py            # quote/K-line/provider logic
+├── knowledge.py              # local knowledge/RAG workflows
 ├── data_chain.py             # provenance and integrity
-├── rag.py                    # local retrieval layer
-├── plugins/                  # extension system
+├── plugin_manager.py         # plugin loading
+├── plugins/                  # extensions
 ├── finterminal-desktop/      # Electron desktop application
 ├── frontend-legacy/          # archived earlier web prototype
-├── tests/                    # automated tests
-├── CONTRIBUTING.md
-└── SECURITY.md
+├── tests/                    # pytest suite
+├── pyproject.toml            # Python packaging and dependencies
+└── .github/workflows/        # CI and release validation
 ```
 
-The exact structure may evolve as the project is modularized.
+## Engineering quality
+
+Pull requests and pushes to `main` are checked with GitHub Actions for repository hygiene, version alignment, Python installation, source compilation, Ruff, pytest, and the desktop TypeScript/Vite build.
+
+Release tags additionally pass a release gate that validates version metadata and builds Python and desktop-renderer artifacts before they are treated as release candidates.
 
 ## Roadmap
 
-Near-term open-source priorities include:
-
-- reproducible installation and packaging documentation;
-- broader automated test coverage;
-- cleaner provider abstractions and additional data-source plugins;
-- stronger evaluation of RAG and agentic research quality;
-- improved English and Chinese documentation;
-- reproducible release artifacts for the desktop application;
-- community-reported issues and external contributions;
-- continued security hardening of the local desktop/backend boundary.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for current priorities. Near-term work includes stronger test classification, provider abstraction, research-quality evaluation, packaging/release hardening, documentation, and external contributor adoption.
 
 ## Contributing
 
-FinTerminal is looking for contributors interested in financial data infrastructure, MCP, quantitative research, RAG, agentic workflows, desktop UX, testing, documentation, and reproducible research.
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Bug reports and feature proposals can use the repository's GitHub issue templates.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before opening a pull request.
 
 ## Security
 
@@ -201,7 +186,7 @@ Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not 
 
 ## License
 
-FinTerminal is licensed under the [Apache License 2.0](LICENSE). Contributions submitted to this repository are accepted under the same license unless explicitly stated otherwise.
+FinTerminal is licensed under the [Apache License 2.0](LICENSE).
 
 ## Disclaimer
 

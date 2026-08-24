@@ -1,10 +1,18 @@
 {
   "name": "finterminal-desktop",
   "version": "0.1.1",
-  "description": "FinTerminal 桌面应用 - 本地金融数据终端",
+  "description": "Local-first desktop client for FinTerminal financial research workflows",
   "main": "electron/main.js",
-  "author": "FinTerminal",
-  "license": "MIT",
+  "author": "Lucas Chang",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/lucaschang2021/finterminal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lucaschang2021/finterminal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lucaschang2021/finterminal/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

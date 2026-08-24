@@ -10,10 +10,19 @@ All notable project-level changes should be recorded here. FinTerminal follows a
 - English OSS landing page and Chinese documentation entry point
 - contribution, security, support, and conduct policies
 - GitHub issue and pull-request templates
-- public architecture and roadmap documentation
+- public architecture, development, release, and roadmap documentation
 - citation metadata for academic/research use
+- Dependabot and CODEOWNERS configuration
 - repository hygiene and desktop-build CI
-- Dependabot configuration for the desktop npm project
+- Python 3.13 package installation, Ruff, compile, and pytest CI
+- release-gate workflow that validates versions and builds Python/desktop-renderer artifacts
+
+### Changed
+
+- normalized Python package metadata and aligned the project version to 0.1.1
+- aligned desktop package metadata with the repository-level Apache-2.0 license
+- refreshed the primary README with reproducible Python installation and the real repository structure
+- formalized version-alignment checks between Python and desktop packages
 
 ## 0.1.1 — 2026-08-22
 

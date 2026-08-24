@@ -21,6 +21,7 @@ import hashlib
 import shutil
 import sys
 from pathlib import Path
+
 # Windows GBK console cannot print emoji/CJK -> force UTF-8 output
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):

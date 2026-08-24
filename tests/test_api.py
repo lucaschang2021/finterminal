@@ -76,7 +76,7 @@ def test_ask_route(client):
 
 
 def test_ask_stream_reports_progress_and_combined_artifacts(client, monkeypatch):
-    """一次请求可同时返回图表和统计成果，并保留最终文本帧。"""
+    """一次请求可同时返回图表和结构化统计成果，并保留最终文本帧。"""
     monkeypatch.setattr(api.m, "_last_charts", [])
 
     def fake_ask(query, history=None, event_callback=None):
@@ -114,7 +114,11 @@ def test_ask_stream_reports_progress_and_combined_artifacts(client, monkeypatch)
     artifact_frames = [frame["artifacts"] for frame in frames if "artifacts" in frame]
     assert artifact_frames == [{
         "charts": ["line_demo.png"],
-        "statistics": ["统计摘要"],
+        "statistics": [{
+            "analysis": "describe",
+            "file_path": "",
+            "result": "统计摘要",
+        }],
     }]
     final_text = "".join(frame.get("delta", "") for frame in frames)
     assert "图表与统计分析均已完成" in final_text
@@ -135,7 +139,7 @@ def test_api_key_save_clear(monkeypatch):
     import keyring
     import mcp_server as m
 
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)  # 隔离环境变量（优先级最高）
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     saved: dict = {}
     monkeypatch.setattr(keyring, "set_password", lambda s, u, k: saved.__setitem__(u, k))
     monkeypatch.setattr(keyring, "get_password", lambda s, u: saved.get(u))
@@ -173,7 +177,7 @@ def test_api_key_config_fallback(monkeypatch, tmp_path):
         assert ok and "config.json" in msg
         data = json.loads(cfg_file.read_text(encoding="utf-8"))
         assert data["deepseek_api_key"] == "sk-fallback-1"
-        assert data["deepseek_model"] == "deepseek-v4-flash"  # 其它字段保留
+        assert data["deepseek_model"] == "deepseek-v4-flash"
     finally:
         m.DEEPSEEK_API_KEY = old
 
@@ -205,19 +209,14 @@ def test_api_token_required_when_enabled(client):
     """启用 FIN_API_TOKEN 后：无 token 401，错误 token 401，正确 token 放行。"""
     api.API_TOKEN = "secret-token-123"
     try:
-        # 无 token
         r = client.get("/api/health")
         assert r.status_code == 401
-        # 错误 token（query）
         r = client.get("/api/health", params={"token": "wrong"})
         assert r.status_code == 401
-        # 错误 token（header）
         r = client.get("/api/health", headers={"Authorization": "Bearer wrong"})
         assert r.status_code == 401
-        # 正确 token（query）
         r = client.get("/api/health", params={"token": "secret-token-123"})
         assert r.status_code == 200 and r.json()["ok"]
-        # 正确 token（header）
         r = client.get("/api/health", headers={"Authorization": "Bearer secret-token-123"})
         assert r.status_code == 200 and r.json()["ok"]
     finally:
