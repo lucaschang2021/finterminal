@@ -7,7 +7,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate-release:
@@ -45,7 +45,8 @@ jobs:
               raise SystemExit(f'version mismatch: Python={py_version}, desktop={desktop_version}')
 
           ref = os.environ.get('GITHUB_REF_NAME', '')
-          if ref.startswith('v') and ref != f'v{py_version}':
+          event = os.environ.get('GITHUB_EVENT_NAME', '')
+          if event == 'push' and ref != f'v{py_version}':
               raise SystemExit(f'tag {ref} does not match project version v{py_version}')
 
           print(f'release metadata aligned at {py_version}')
@@ -62,6 +63,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          sha256sum dist/* > SHA256SUMS.txt
+          find finterminal-desktop/dist -type f -print0 | sort -z | xargs -0 sha256sum >> SHA256SUMS.txt
+
       - name: Upload Python distributions
         uses: actions/upload-artifact@v4
         with:
@@ -75,3 +82,19 @@ jobs:
           name: finterminal-desktop-renderer
           path: finterminal-desktop/dist/**
           if-no-files-found: error
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: finterminal-checksums
+          path: SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*
+            SHA256SUMS.txt
