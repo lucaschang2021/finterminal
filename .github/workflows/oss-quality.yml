@@ -1,0 +1,50 @@
+name: OSS quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify required OSS files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(README.md LICENSE CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md SUPPORT.md CITATION.cff)
+          for file in "${required[@]}"; do
+            test -s "$file" || { echo "Missing or empty required file: $file"; exit 1; }
+          done
+      - name: Validate JSON configuration
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in [Path('config.example.json'), Path('finterminal-desktop/package.json')]:
+              with path.open(encoding='utf-8') as f:
+                  json.load(f)
+              print(f'validated {path}')
+          PY
+
+  desktop-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: finterminal-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: finterminal-desktop/package-lock.json
+      - name: Install desktop dependencies
+        run: npm ci
+      - name: Type-check and build desktop renderer
+        run: npm run build
