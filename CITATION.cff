@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use FinTerminal in research, please cite the software and the specific release or commit you used."
+title: "FinTerminal"
+type: software
+authors:
+  - family-names: "Chang"
+    given-names: "Lucas"
+repository-code: "https://github.com/lucaschang2021/finterminal"
+url: "https://github.com/lucaschang2021/finterminal"
+license: Apache-2.0
+version: "0.1.1"
+date-released: "2026-08-22"
+keywords:
+  - finance
+  - MCP
+  - quantitative-research
+  - RAG
+  - agentic-research
+  - data-provenance
+  - fintech
