@@ -64,8 +64,8 @@ jobs:
       - name: Upgrade packaging tools
         run: python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install FinTerminal with development dependencies
-        run: python -m pip install -e '.[dev]'
+      - name: Install FinTerminal test environment
+        run: python -m pip install -e '.[dev,charts,kb]'
 
       - name: Compile Python sources
         run: python -m compileall -q .
