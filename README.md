@@ -2,7 +2,7 @@
 
 **Local-first AI financial research infrastructure built around MCP, quantitative analysis, RAG, agentic research, and auditable data provenance.**
 
-[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0](LICENSE)
 
 > **Status:** FinTerminal is an early-stage open-source project. Interfaces, packaging, and research workflows may evolve quickly. Feedback, bug reports, integrations, and contributions are welcome.
 
@@ -201,7 +201,7 @@ Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not 
 
 ## License
 
-A project license is being finalized as part of the OSS-readiness work. Until a license is published, the repository's source remains subject to applicable copyright law; public visibility alone does not grant open-source reuse rights.
+FinTerminal is licensed under the [Apache License 2.0](LICENSE). Contributions submitted to this repository are accepted under the same license unless explicitly stated otherwise.
 
 ## Disclaimer
 
