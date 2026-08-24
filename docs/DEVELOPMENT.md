@@ -20,23 +20,55 @@ This guide describes the current contribution workflow for FinTerminal. It focus
 
 ## Python workflow
 
-The repository already contains a broad pytest suite, but dependency management is still being consolidated into a reproducible install path. Until that work is complete:
+FinTerminal declares its Python build metadata and dependencies in `pyproject.toml` and currently targets Python 3.13 or newer.
 
-- use an isolated virtual environment;
-- install only dependencies required by the area you are changing;
-- avoid committing environment-specific lock artifacts unless they are part of an agreed packaging change;
-- run the narrowest relevant tests first, followed by the broader suite when practical.
-
-Example:
+Create an isolated environment and install the development extra:
 
 ```bash
 python -m venv .venv
-pytest tests/test_analysis.py
-pytest tests/test_data_chain.py
+```
+
+Activate the environment, then run:
+
+```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e ".[dev]"
+```
+
+Optional feature groups can be installed independently:
+
+```bash
+python -m pip install -e ".[market]"
+python -m pip install -e ".[kb]"
+python -m pip install -e ".[vision]"
+python -m pip install -e ".[charts]"
+python -m pip install -e ".[anchor]"
+```
+
+For a broad local environment:
+
+```bash
+python -m pip install -e ".[all,dev]"
+```
+
+### Python validation
+
+Run the same basic checks used by CI:
+
+```bash
+python -m compileall -q .
+ruff check .
 pytest
 ```
 
-Some tests or integrations may depend on optional local/provider capabilities. A future milestone is to classify the suite explicitly into deterministic core tests and credential/network-dependent integration tests.
+For focused development, run the narrowest relevant tests first:
+
+```bash
+pytest tests/test_analysis.py
+pytest tests/test_data_chain.py
+```
+
+Network- or provider-dependent capabilities should remain optional and must not require credentials for the deterministic core test suite.
 
 ## Desktop workflow
 
@@ -87,4 +119,4 @@ Changes deserve extra review when they affect:
 
 ## Versioning
 
-FinTerminal is pre-1.0. Breaking changes may occur, but releases should still document user-visible changes in `CHANGELOG.md` and keep desktop/package release metadata aligned where practical.
+FinTerminal is pre-1.0. Breaking changes may occur, but release metadata should remain aligned across `pyproject.toml`, `finterminal-desktop/package.json`, `CITATION.cff`, tags, and release notes. CI verifies the Python and desktop package versions match.
