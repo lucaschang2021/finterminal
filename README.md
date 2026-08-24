@@ -1,306 +1,212 @@
-# FinTerminal —— 金融数据终端 MCP 服务
+# FinTerminal
 
-一个基于 FastMCP 的本地 MCP（Model Context Protocol）服务器，核心思路：
-**读取本地数据文件 → 可视化 → 自然语言对话操作 → 数据链追溯文件变更**。
+**Local-first AI financial research infrastructure built around MCP, quantitative analysis, RAG, agentic research, and auditable data provenance.**
 
-已注册给 Cline 使用，服务名 `fin-terminal`，对外暴露 **8 个精简能力工具**。
+[简体中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-> 设计说明：内部功能粒度较细（29 个底层能力），但 MCP 只对外暴露 8 个统一入口，
-> 降低模型工具选择负担与 schema 上下文占用（工具 >20 个时模型选择准确率跌破 90%）。
+> **Status:** FinTerminal is an early-stage open-source project. Interfaces, packaging, and research workflows may evolve quickly. Feedback, bug reports, integrations, and contributions are welcome.
 
-## 功能总览
+## Why FinTerminal?
 
-| 模块 | 说明 |
+Financial research often lives across spreadsheets, PDFs, market-data websites, notebooks, charting tools, and AI chat windows. FinTerminal brings those workflows into one local-first research layer that AI clients can access through the Model Context Protocol (MCP).
+
+The project intentionally exposes a compact set of high-level MCP tools while keeping richer capabilities behind them. The goal is to reduce tool-selection overhead for agents without giving up serious financial-analysis functionality.
+
+FinTerminal can be used as:
+
+- an **MCP server** for AI-assisted financial research;
+- a **Windows desktop research terminal** with a local Python backend;
+- a **quantitative analysis toolkit** for common research workflows;
+- a **local RAG knowledge base** with source attribution;
+- an **agentic research workflow** that combines market data, technical analysis, forecasting, documents, and model-generated synthesis;
+- an **auditable data-provenance layer** using SHA-256 history and optional RFC3161 timestamp anchoring.
+
+## Core capabilities
+
+| Area | What FinTerminal provides |
 |---|---|
-| 文件读取 | CSV / Excel / Word / PDF / 文本，自动识别编码与分隔符；扫描件 OCR、加密文件密码解密、损坏检测 |
-| 数据可视化 | 24+ 种图表类型，同时输出静态 PNG 与**交互式 HTML**（plotly 内嵌 JS，离线可交互），输出到 `charts/` |
-| 自然语言交互 | 搜索文件、多轮对话选文件并画图，其余意图走 DeepSeek 函数调用 |
-| 数据链 | 文件变更历史 + SHA-256 哈希链（区块链基础）+ 快照清理 + 完整性校验 |
-| 数据清洗 | `clean` 自动处理脏数据：空行/空列、重复行、空白、重复列名 |
-| 统计分析 | 描述/相关/分组/回归（含**稳健标准误**）/t检验/ANOVA/**非参数检验**/趋势/**VIF**/**事件研究**/**DID** |
-| 自动报告 | `analyze(analysis="report")` 生成论文风格报告，**支持 md/docx/pdf 导出**，可选 AI 结论建议 |
-| 实时数据源 | 实时行情 + 多周期K线（日/周/月）+ 技术指标（MA/MACD/RSI/布林/KDJ/OBV/ATR）+ **时序预测（ARIMA/ETS/线性，AIC 自动择优）**；本地缓存（行情 30s / K线 1h）+ 多源交叉验证；腾讯 → AkShare → yfinance → **插件** 多级回退 |
-| 多模态视觉 | `read(图片路径)` 自动 OCR 图片文字并还原表格数据 |
-| RAG 知识库 | 本地向量检索 + **BM25 混合检索（RRF 融合）** + **引用溯源**；语义分块、重复添加自动更新、可移除/清空/列清单 |
-| Agentic 研究 | `ask` 说"写一份贵州茅台的研究报告"→ 自动完成行情/指标/趋势/预测/研报/AI结论的完整研究报告；**逐章节降级**：行情/K线/预测失败时跳过并标注，离线也能基于知识库出报告 |
-| 数据可信 | 数据链链头支持 **RFC3161 可信时间戳锚定**（chain action=anchor），可第三方验证"此时刻前已存在且未被篡改" |
-| 多模态 VLM | 配置 `vision_api_key/vision_model` 后，图片走视觉大模型理解图表数据；未配置自动回退 OCR |
-| 本地小模型 | 配置 `local_model`（如 Qwen2.5-0.5B）后，融合分析可走本地推理；未配置自动回退 DeepSeek |
-| 策略回测 | `analyze(analysis="backtest")`：信号列回测，输出收益率/回撤/夏普/胜率/交易次数 |
-| 插件系统 | `plugins/` 目录自动加载插件：可扩展数据源（quote/kline）、分析类型、图表类型，不影响 8 工具架构 |
+| Local data | CSV, Excel, Word, PDF, text, image/OCR ingestion, validation, cleaning, and file search |
+| Visualization | 27+ built-in chart types, static output, interactive Plotly HTML, technical-analysis charts |
+| Quant research | Descriptive statistics, correlation, group-by analysis, OLS, robust standard errors, hypothesis tests, VIF, event studies, DID, trend analysis, and backtesting |
+| Market data | Quotes, multi-period K-lines, technical indicators, caching, provider fallback, and optional cross-checking |
+| Forecasting | Linear, ARIMA, and ETS forecasting with automatic model selection where supported |
+| RAG | Local vector retrieval, BM25 hybrid retrieval, reciprocal-rank fusion, document lifecycle operations, and citations |
+| Agentic research | Multi-step research reports combining market data, indicators, forecasts, knowledge-base evidence, and AI synthesis with graceful degradation |
+| Data provenance | File-change history, SHA-256 hash chaining, integrity verification, snapshots, and RFC3161 timestamp anchoring |
+| Extensibility | Plugins for data sources, analysis types, and chart types without expanding the public MCP surface unnecessarily |
+| Desktop | Electron + React + TypeScript interface backed by a packaged local FastAPI/Python service |
 
-## 工具清单（8 个）
+## MCP surface
 
-| 工具 | 说明 |
+FinTerminal exposes eight high-level tools:
+
+| Tool | Purpose |
 |---|---|
-| `read(file_path=None, source="local", ..., kline=False, days=60, period="daily", cross_check=False, forecast=False, horizon=10, model="auto")` | 读取数据：`source="api"` 查行情/K线/交叉验证；`forecast=True` 时序预测（model: linear/arima/ets/auto） |
-| `detect(path)` | 文件体检：格式匹配、加密、损坏、空文件检测 |
-| `clean(file_path, save=False, password=None)` | 清洗杂乱数据：空行/空列、去重、修剪空白、列名规范化 |
-| `plot(chart_type, file_path, ..., source="local", days=60)` | 画图，支持 27 种内置类型 + 插件扩展；`source="api"` 时直接画股票K线/走势/技术面 |
-| `analyze(file_path, analysis, ...)` | 统计分析统一入口：describe / correlation / groupby / regression / test / trend / report |
-| `search(keyword=None, directory=None, recursive=False)` | 搜索文件；keyword 留空列出数据文件 |
-| `chain(action, ...)` | 数据链统一入口：status / track / untrack / snapshot / history / show / cleanup / verify |
-| `ask(query)` | 多轮对话入口，DeepSeek 驱动，自动调用以上工具 |
+| `read` | Read local files or market data; optionally request K-lines, cross-checking, or forecasting |
+| `detect` | Inspect files for format, encryption, corruption, or empty content |
+| `clean` | Clean common tabular-data problems |
+| `plot` | Create financial, statistical, and general-purpose visualizations |
+| `analyze` | Run quantitative/statistical analysis and research-report workflows |
+| `search` | Search and enumerate local research files |
+| `chain` | Track and verify data provenance and timestamp anchors |
+| `ask` | Natural-language orchestration across FinTerminal capabilities |
 
-**意图路由与消歧**：`ask` 内置时间意图识别（实时 vs 历史）与数据源路由——"现在/当前/多少钱"走实时行情，"历史/财报/研报"走 RAG 知识库；时间意图不明确时返回候选确认（回复 1/2 选择）；行情与知识库结果都标注 📌 数据来源，并支持"切换到实时数据 / 切换到历史研报"随时纠正路由。模糊指令（如"帮我看看这个"）会基于当前上下文返回可用操作列表。
+This compact surface is deliberate: agents see a small set of stable research primitives while FinTerminal handles lower-level routing internally.
 
-### 支持的图表类型（plot 的 chart_type）
+## Quick start
 
-**支持的图表类型（chart_type）**：
+### 1. Clone the repository
 
-`line` 折线 · `bar` 柱状 · `barh` 水平柱状 · `stacked_bar` 堆叠柱状 · `grouped_bar` 分组柱状 ·
-`scatter` 散点 · `bubble` 气泡 · `pie` 饼图 · `donut` 环形 · `area` 面积 · `candlestick` K线 ·
-`box` 箱线 · `violin` 小提琴 · `histogram` 直方 · `heatmap` 热力（相关性/透视） · `radar` 雷达 ·
-`waterfall` 瀑布 · `funnel` 漏斗 · `step` 步进 · `polar` 极坐标 · `errorbar` 误差条 ·
-`treemap` 矩形树 · `scatter3d` 3D散点 · `surface` 3D曲面
+```bash
+git clone https://github.com/lucaschang2021/finterminal.git
+cd finterminal
+```
 
-另加：`technical` 技术面组合图（价格 + MA + 布林带 + RSI，需 `source="api"` 自动计算指标）。
-另加：`wordcloud` 中文词云（jieba 分词）、`sankey` 桑基图（源/目标/流量三列）。
+### 2. Create an isolated Python environment
 
-图表保存到 `charts/` 目录，文件名带时间戳，不会覆盖旧图。K线图遵循中国习惯：红涨绿跌。
+```bash
+python -m venv .venv
+```
 
-### analyze 的分析类型（analysis 参数）
+Activate it with the command appropriate for your operating system, then install the dependencies used by the Python service.
 
-| 类型 | 说明 |
-|---|---|
-| `describe` | 描述性统计：均值、标准差、分位数、偏度、峰度、缺失值 |
-| `correlation` | Pearson 相关矩阵 + 显著性 p 值（星标）与显著相关对 |
-| `groupby` | 分组统计：mean/sum/count/std/median/min/max |
-| `regression` | OLS 线性回归：系数、标准误、t 值、p 值、R²、F 检验 |
-| `test` | 显著性检验：`ttest`（两组）/ `anova`（多组） |
-| `trend` | 时间趋势：总增幅、CAGR、平均环比、线性趋势 |
-| `vif` | 多重共线性诊断（方差膨胀因子） |
-| `event` | 事件研究：事件窗口异常收益 AR / 累计异常收益 CAR |
-| `did` | 双重差分：treat×post 交互项估计 |
-| `backtest` | 策略回测：信号列 → 收益率/回撤/夏普/胜率（`signal_column`、`initial_capital`、`fee_rate`） |
-| `report` | 自动生成论文风格报告（`format` 可选 md/docx/pdf；`ai_comment=True` 由 DeepSeek 撰写结论建议），输出到 `reports/` |
+> Dependency and packaging cleanup is ongoing. Until a fully reproducible installation path is published, treat `main` as development software and review the repository configuration before using external model or market-data providers.
 
-`ask` 支持的说法示例：`用第1个`、`查看第1个`、`画贵州茅台的技术面图`、`做相关分析`、`生成研究论文报告`、`查一下贵州茅台行情`、`把这份研报添加到知识库`（重复添加自动更新）、`查一下知识库：茅台的估值`、`列出知识库文档`、`清空知识库`、`写一份贵州茅台的研究报告`（Agentic 自主研究）、`给数据链盖时间戳`（chain anchor）、`结合历史研报和当前行情，分析贵州茅台`、`重新选择`。所有读取/画图操作都会自动把文件记入数据链。
+### 3. Configure optional providers
 
-## 桌面应用（Electron）
+Use `config.example.json` as the starting point for local configuration. Never commit API keys or credentials.
 
-除 MCP 服务外，FinTerminal 还提供开箱即用的 Windows 桌面版（`finterminal-desktop/`），双击 exe 即可运行，**无需安装 Python 或任何依赖**。
-
-技术栈：Electron 33 + React 18 + TypeScript + Vite + ECharts 6 + shadcn/ui + GSAP；Python 后端（FastAPI）经 PyInstaller 打包为单文件 exe，由 Electron 主进程自动拉起。
-
-界面特色：
-
-- **品牌启动动画**：彩虹双菱形图标 + Canvas 粒子流动/泼洒动画，平滑过渡到登录页
-- **液态玻璃风格**：磨砂玻璃 + 五彩流光暗流，深色基底；6 套主题预设 + 自定义主/辅色，深浅色按时间自动切换
-- **四区域布局**：左侧悬停滑出导航（对话/文件/图表/数据链/知识库/设置/导出）· 中央 ChatGPT 风格流式对话（SSE）· 右侧实时行情/数据链/知识库看板（抽屉式可收起）· 底部可拉出面板（图表详情/研报分析/数据链可视化/统计分析）
-- **多语言**：中文 / English 一键切换（设置页），选择持久化保存，重启保留
-
-开发运行：
+### 4. Desktop development
 
 ```bash
 cd finterminal-desktop
 npm install
-npm run electron:dev     # Vite dev + Electron，自动拉起 Python 后端
+npm run electron:dev
 ```
 
-打包发布：
+The desktop application uses Electron 33, React 18, TypeScript, Vite, ECharts, and a local FastAPI/Python backend. Production packaging builds the backend with PyInstaller and launches it as a child process from Electron.
 
-```bash
-cd finterminal-desktop
-npm run backend:build    # PyInstaller 打包后端为单文件 exe
-npm run electron:build   # 产出 release/：Setup 安装版 + Portable 单文件版
+## Desktop architecture
+
+The desktop application follows a local-first architecture:
+
+```text
+Electron main process
+        |
+        +--> local Python / FastAPI backend
+        |       |
+        |       +--> research tools
+        |       +--> market-data providers
+        |       +--> RAG / local data
+        |       +--> charts / reports / provenance
+        |
+        +--> React renderer
+                |
+                +--> authenticated localhost API
 ```
 
-架构要点：
+Important implementation choices include:
 
-- **启动流程**：Electron 主进程 → 启动 Python 后端子进程（优先 `finterminal-backend.exe`，dev 模式走本机 Python）→ 等待 `/api/health` 就绪 → 加载前端（dev 加载 Vite，生产加载 `dist/`）→ 前端经 `http://127.0.0.1:<port>/api` 调用后端
-- **端口自适应**：8000 被占用时自动探测 8001-8020 空闲端口，preload 将实际端口注入前端
-- **数据落盘**：打包模式所有数据（数据链/知识库/缓存/图表/会话）写入 exe 同级的 `data/` 目录，可随包整体迁移
-- **干净退出**：退出先请求后端 `/api/shutdown` 优雅关闭，6 秒超时才强杀进程树；启动时兜底清理 Temp 中超过 1 小时的解压残留，避免磁盘膨胀
-- **安全**：渲染进程禁用 Node 集成，仅通过 preload 暴露白名单 API；每次启动生成随机 `FIN_API_TOKEN` 注入后端，前端请求统一携带 Bearer Token，本机其它进程无法调用 API；`/api/file` 只允许访问 `charts/` 目录，防任意文件读取
+- Node integration disabled in the renderer;
+- a per-launch random API token for the local backend;
+- adaptive localhost ports when the default port is occupied;
+- application-managed local data storage;
+- graceful backend shutdown with process cleanup fallbacks;
+- restricted file-serving behavior for generated outputs.
 
-## Web 前端（旧版网页原型，已归档）
+## Quantitative research
 
-`frontend-legacy/` 为早期基于 React 18 + Vite + ECharts 的网页原型，已归档；当前交互界面以桌面应用为准。归档版通过 HTTP API 桥（`api_server.py`）复用 8 个工具的底层函数，结构参考如下（仅供历史追溯，不再维护）：
+The unified analysis layer includes workflows for:
 
-- 图表渲染：前端调 `/api/plot/data` 获取 ECharts 结构化 option（line/bar/area/stacked/grouped/scatter/bubble/pie/donut/box/histogram），交互式渲染（缩放/悬停/图例切换）；`/api/plot/save` 仍可生成 PNG + 交互 HTML
-- 静态文件：`/api/file` 仅允许访问 `charts/` 目录（防任意文件读取）
+- descriptive statistics;
+- Pearson correlation and significance testing;
+- grouped statistics;
+- OLS regression and robust standard errors;
+- t-tests, ANOVA, and non-parametric tests where supported;
+- trend and CAGR analysis;
+- variance inflation factors;
+- event-study abnormal returns and CAR;
+- difference-in-differences estimation;
+- signal-based strategy backtesting;
+- research-report export to Markdown, DOCX, and PDF.
 
-## 数据链说明
+FinTerminal is research software. Statistical output should be independently validated before it is used for academic publication, investment decisions, or production systems.
 
-### 工作原理
+## RAG and agentic research
 
-- 文件第一次被读取 → 生成「初始快照」记录（区块）
-- 之后每次内容变化 → 追加新记录，包含：时间、操作（创建/修改/删除）、前后哈希、大小、**具体改动**（新增/删除的行及内容、修改的单元格前后值）
-- 每条记录的 `prev_hash` 指向上一条的 `record_hash`，形成不可篡改的哈希链
-- 每次变化保存一份文件快照，供差异对比和日后恢复
+FinTerminal includes a local knowledge layer combining semantic retrieval and BM25, with reciprocal-rank fusion and source attribution. Documents can be added, updated, removed, listed, and cleared through the research workflow.
 
-### 存储结构
+The `ask` orchestration layer can combine current market data with historical research material. Agentic report generation is designed to degrade gracefully: if a market-data, charting, or forecasting step fails, remaining sections can continue and the missing component is identified rather than silently fabricated.
 
-```
-data_chain/
-├── ledger.json     # 账本（区块记录 + 链头哈希）
-├── tracked.json    # 跟踪清单
-├── cleanup.json    # 清理登记（已归档 / 已删除的快照）
-├── snapshots/      # 在库快照
-└── archive/        # 归档快照
-```
+## Data provenance
 
-### 快照清理与校验
+Research reproducibility is a first-class goal. FinTerminal can track file changes in a SHA-256-linked history, verify integrity, maintain snapshots, and optionally anchor a chain head using RFC3161 trusted timestamps.
 
-- 清理只动快照文件，**账本区块保持不可变**；清理动作登记到 `cleanup.json`
-- `chain_verify` 检查四层：链内哈希衔接、在库快照哈希、归档快照哈希（已清理的跳过）、当前文件与最后记录的对照（发现未记录的变更）
-- 清理时每文件至少保留最近 1 版快照，保证后续差异对比可用
+This is intended to help researchers answer questions such as:
 
-### 使用示例
+- Which version of a dataset was used for an analysis?
+- Has a tracked file changed since a previous research step?
+- Can a research artifact be shown to have existed before a particular trusted timestamp?
 
-```
-跟踪桌面上的销售数据.csv
-检查一下这个文件有没有变化
-查一下 销售数据.csv 的历史记录
-查看记录 #3 具体改了什么
-清理历史快照（每文件保留最近 5 版，归档）
-校验数据链完整性
-```
+It is **not** a blockchain network, custody system, or substitute for institutional compliance controls.
 
-## 安装与运行
+## Plugin system
 
-> 桌面应用的使用方式见上文「桌面应用（Electron）」；以下为 MCP 服务的开发运行方式。
+The `plugins/` architecture allows contributors to extend selected capabilities without continuously increasing the number of MCP tools exposed to agents. Current extension areas include market-data providers, analysis types, and chart types.
 
-### 依赖
+This is one of the areas where external contributions are especially welcome.
 
-- Python 3.13+
-- 按功能拆分安装（pyproject.toml 的 optional-dependencies），推荐方式：
+## Project structure
 
-```bash
-# 最小核心（MCP 服务 + 文件读取 + 统计 + 图表）
-pip install -e .
-
-# 按需启用功能组：行情增强 / 知识库 / OCR / 交互图表 / 本地小模型 / 时间戳锚定
-pip install -e ".[market]"     # AkShare 交叉验证 + yfinance 海外标的
-pip install -e ".[kb]"         # RAG 知识库（chromadb + 向量 + BM25）
-pip install -e ".[vision]"     # 图片 / 扫描件 OCR
-pip install -e ".[charts]"     # 交互式 HTML / 词云 / 矩形树图
-pip install -e ".[llm]"        # 本地小模型推理（transformers，体积大）
-pip install -e ".[anchor]"     # 数据链 RFC3161 可信时间戳锚定
-pip install -e ".[dev]"        # pytest / ruff / pip-audit
-
-# 等价旧版全量安装（体积最大，约 400MB）
-pip install -e ".[all]"
+```text
+finterminal/
+├── server.py                 # MCP entry point
+├── api_server.py             # local HTTP/FastAPI bridge
+├── analysis.py               # statistical analysis
+├── charts.py                 # visualization
+├── data_chain.py             # provenance and integrity
+├── rag.py                    # local retrieval layer
+├── plugins/                  # extension system
+├── finterminal-desktop/      # Electron desktop application
+├── frontend-legacy/          # archived earlier web prototype
+├── tests/                    # automated tests
+├── CONTRIBUTING.md
+└── SECURITY.md
 ```
 
-### 测试
+The exact structure may evolve as the project is modularized.
 
-- 单元测试：`python -m pytest tests/ -q`（77 项：分析/图表/行情/加密/数据链/导出/路由/回测/知识库/插件/预测/API 鉴权）
-  - 测试环境自愈：basetemp 每次运行使用唯一时间戳目录并自动清理残留（`tests/conftest.py`），
-    即使 `.pytest-tmp*` 因 ACL 损坏或沙箱权限问题也不阻塞整轮测试
-- 依赖安全扫描：`python -m pip_audit`
-- 静态质量检查：`python -m ruff check .`（规则配置见 `pyproject.toml`，中文全角标点/紧凑风格已豁免）
+## Roadmap
 
-### 启动性能
+Near-term open-source priorities include:
 
-- pandas / scipy / matplotlib / openai / pdfplumber 等重型依赖均为**惰性加载**（首次使用时才导入），
-  服务启动约 **3.2 秒**（未优化前 7.9 秒，-60%）；首次绘图/统计调用会略慢属正常
+- reproducible installation and packaging documentation;
+- broader automated test coverage;
+- cleaner provider abstractions and additional data-source plugins;
+- stronger evaluation of RAG and agentic research quality;
+- improved English and Chinese documentation;
+- reproducible release artifacts for the desktop application;
+- community-reported issues and external contributions;
+- continued security hardening of the local desktop/backend boundary.
 
-> `.xls` 需要 `xlrd`，`.xlsx` 需要 `openpyxl`，Word 需要 `python-docx`，扫描件 OCR 需要 `pymupdf` + `rapidocr-onnxruntime`，加密 Office 文件解密需要 `msoffcrypto-tool`。
+## Contributing
 
-### Cline 注册
+FinTerminal is looking for contributors interested in financial data infrastructure, MCP, quantitative research, RAG, agentic workflows, desktop UX, testing, documentation, and reproducible research.
 
-`cline_mcp_settings.json` 已配置好：
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Bug reports and feature proposals can use the repository's GitHub issue templates.
 
-```json
-{
-  "mcpServers": {
-    "fin-terminal": {
-      "command": "<你的 Python 解释器路径>",
-      "args": ["<项目绝对路径>/mcp_server.py"]
-    }
-  }
-}
-```
+## Security
 
-> 注意：代码改动后需在 Cline 中断开重连 `fin-terminal`（或重载窗口）才会加载新代码。
+Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not post API keys, credentials, private financial data, or sensitive local-file contents in public issues.
 
-### 配置
+## License
 
-- **API Key 保护**：密钥保存在 Windows 凭据管理器，`config.json` 不含明文。设置方式：`python set_api_key.py sk-你的密钥`；读取优先级：环境变量 `DEEPSEEK_API_KEY` > 凭据管理器 > `config.json`（迁移兜底）
-- **可选加密**：`config.json` 中 `encrypt_knowledge=true` 加密知识库内容、`encrypt_snapshots=true` 加密数据链快照（AES-256-GCM，密钥存凭据管理器，可用环境变量 `FIN_ENC_KEY` 覆盖；`FIN_KB_ENCRYPT=1` / `FIN_SNAP_ENCRYPT=1` 可临时开启）
-- `config.json`：模型名、桌面路径、加密开关、`market_names`（股票名称→代码映射）、`vision_api_key/vision_model/vision_base_url`（VLM 视觉模型，可选）；模板见 `config.example.json`
-- `session.json`：会话状态持久化（搜索结果、选中文件、列名），自动维护
+A project license is being finalized as part of the OSS-readiness work. Until a license is published, the repository's source remains subject to applicable copyright law; public visibility alone does not grant open-source reuse rights.
 
-```json
-{
-  "deepseek_api_key": "sk-...",
-  "deepseek_model": "deepseek-v4-flash",
-  "desktop_dir": ""
-}
-```
+## Disclaimer
 
-## 目录结构
+FinTerminal is intended for research, education, experimentation, and developer tooling. It does not provide investment advice, brokerage, custody, payment, or fiduciary services. Market data can be delayed, incomplete, or incorrect, and model-generated research can contain errors. Independently verify important results.
 
-```
-finterminal-mcp/
-├── mcp_server.py          # MCP 服务器主逻辑（8 个对外工具 + ask 意图路由调度）
-├── reader.py              # 文件读取 / 体检 / OCR / 清洗（自 mcp_server 拆分）
-├── routing.py             # 意图路由与消歧纯函数（自 mcp_server 拆分）
-├── paths.py               # 共享路径逻辑（数据根目录 / 配置文件定位）
-├── data_chain.py          # 数据链模块（哈希链 + 快照 + 时间戳锚定）
-├── analysis.py            # 统计分析模块（描述/相关/回归/检验/趋势/事件研究/DID）
-├── charts.py              # 图表模块（27 种图表）
-├── chart_data.py          # ECharts 结构化数据（前端交互渲染）
-├── market_data.py         # 实时行情数据源（腾讯/AkShare/yfinance/插件回退 + 预测）
-├── vision_ocr.py          # 多模态图片解析（OCR + 表格还原）
-├── knowledge.py           # RAG 知识库（chromadb + 向量 + BM25 混合检索）
-├── plugin_manager.py      # 插件加载器
-├── plugins/               # 插件目录（example_plugin.py 为示例）
-├── backtest.py            # 策略回测框架
-├── local_llm.py           # 本地小模型推理（可选）
-├── export_utils.py        # Markdown → Word / PDF 导出
-├── excel_utils.py         # Excel 读取（保留公式字符串）
-├── crypto_utils.py        # AES-256-GCM 加密（知识库 / 快照）
-├── api_server.py          # FastAPI REST 桥（Electron 前端调用，支持 Bearer Token 鉴权）
-├── scripts/
-│   └── sync_backend.py    # 双副本去重：根目录 → finterminal-desktop/python/ + SHA-256 校验
-├── finterminal-desktop/   # Electron 桌面应用（见上节）
-│   ├── electron/          # 主进程 + preload 脚本
-│   ├── src/               # React 前端（TypeScript）
-│   ├── python/            # Python 后端副本（PyInstaller 打包进 exe，由 sync_backend.py 同步）
-│   ├── scripts/           # 后端打包 / 构建后清理脚本
-│   └── electron-builder.yml
-├── frontend-legacy/       # 旧版网页原型（已归档）
-├── config.json            # 配置（不含明文密钥）
-├── session.json           # 会话状态
-├── cline_mcp_settings.json# Cline 注册配置
-├── charts/                # 图表输出
-├── reports/               # 自动报告输出
-├── cleaned/               # 清洗结果输出（save=True 时）
-├── knowledge/             # RAG 知识库持久化（首次添加文档时创建）
-└── data_chain/            # 数据链数据（首次使用自动创建）
-```
+---
 
-## 已知限制
-
-- 实时行情基于腾讯公开接口（无需密钥）；海外标的回退 yfinance，需要可访问 Yahoo 的网络
-- 图表支持 27 种内置类型（含词云、桑基图、3D 散点/曲面等），插件可继续扩展
-- 趋势预测支持 ARIMA / ETS / 线性自动择优（研究参考用）；VLM 视觉模型需自行配置密钥
-- 数据链为本地单机账本，RFC3161 时间戳提供"时刻存在性"证明，完整防篡改仍需多副本/多方同步
-
-## 产品风险与注意事项
-
-- **API 鉴权**：桌面版 Electron 启动时为后端注入随机 `FIN_API_TOKEN`，渲染进程经 preload 获取并随请求携带 `Authorization: Bearer <token>`，本机其它进程无法直接调用 API；以 `python -m uvicorn api_server:app` 直接开发运行时未设置该环境变量则保持无鉴权（仅限本机信任环境，切勿暴露到共享机器或公网）
-- **MCP 服务可读任意路径**：MCP 工具按设计允许读取本机任意路径，仅限本机信任环境使用
-- **第三方接口依赖**：行情（腾讯/yfinance）与时间戳（freetsa.org）均为公开服务，无 SLA，可能变更、限流或不可达；关键决策前请交叉验证数据
-- **API Key 安全**：此前密钥曾在对话与文件中出现过，强烈建议前往 DeepSeek 平台轮换后执行 `python set_api_key.py sk-新密钥`
-- **加密默认关闭**：`encrypt_knowledge` / `encrypt_snapshots` 需手动开启，开启前已有数据为明文
-- **网络依赖**：实时行情/知识库融合/AI 结论/时间戳锚定均需联网；离线时行情与 AI 结论明确降级提示，研究报告会跳过不可用章节（数据章节仍可本地生成）
-- **AI 结论仅供研究参考**：所有 AI 生成内容（研报结论、融合分析、图片解析、报告评论）统一附带"非投资建议、请人工复核"风险提示；模型可能错误解读数据，关键决策前必须人工复核
-- **已知漏洞**：chromadb 1.5.9 存在 PYSEC-2026-311（暂无修复版本），仅用于本地向量检索，影响可控；pip 等其他漏洞已升级修复
-
-## 开发规范（双副本去重）
-
-仓库根目录与 `finterminal-desktop/python/` 各有一份 Python 后端（桌面版需自包含打包，
-不能用 junction/symlink）。约定：**根目录为唯一源码**，桌面副本由脚本生成并校验：
-
-```bash
-python scripts/sync_backend.py            # 同步：根目录 → finterminal-desktop/python/
-python scripts/sync_backend.py --check    # 校验一致性（不一致退出码 1，供 pre-commit/CI）
-```
-
-- `npm run backend:build` 已自动先执行同步，桌面版打包不会用到过期副本
-- 修改任何后端 `.py` 后，提交前运行 `python scripts/sync_backend.py --check`，或直接同步后一并提交
-- 桌面端特有文件（`run_server.py`、`requirements.txt`）不参与同步，保留在桌面端
+If FinTerminal is useful to your research or development workflow, opening an issue with feedback, testing a release, contributing a provider/plugin, or starring the repository all help the project mature.
