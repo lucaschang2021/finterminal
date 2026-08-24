@@ -4,6 +4,10 @@ All notable project-level changes should be recorded here. FinTerminal follows a
 
 ## Unreleased
 
+_No project-level changes recorded yet._
+
+## 0.1.1 — 2026-08-25
+
 ### Added
 
 - Apache-2.0 open-source licensing
@@ -23,9 +27,6 @@ All notable project-level changes should be recorded here. FinTerminal follows a
 - aligned desktop package metadata with the repository-level Apache-2.0 license
 - refreshed the primary README with reproducible Python installation and the real repository structure
 - formalized version-alignment checks between Python and desktop packages
-
-## 0.1.1 — 2026-08-22
-
 - synchronized analysis workspace artifacts
 - continued desktop and charting reliability improvements
 - fixed chart-data handling and chart-type switching issues
