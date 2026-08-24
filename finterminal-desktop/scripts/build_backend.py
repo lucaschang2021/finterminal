@@ -148,7 +148,6 @@ def _prune_deep_paths(max_len: int = 200) -> None:
     win-unpacked/resources/backend/... 时前缀更长，超深路径会导致整个目录复制失败
     （产物残缺）。这里把绝对路径超过 max_len 的文件删掉，并在构建完成后立即执行。
     """
-    import os
     removed = 0
     root = OUT_DIR / "finterminal-backend"
     for f in list(root.rglob("*")):
