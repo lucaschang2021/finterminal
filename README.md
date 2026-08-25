@@ -6,6 +6,16 @@
 
 > **Status:** FinTerminal is an early-stage open-source project. Interfaces and research workflows may evolve quickly. Feedback, bug reports, integrations, and contributions are welcome.
 
+## v0.1.1 OSS engineering milestone
+
+FinTerminal v0.1.1 establishes the project's reproducible open-source engineering baseline. The repository now includes Apache-2.0 licensing, public contribution/security/support governance, issue and pull-request templates, architecture and development documentation, citation metadata, CODEOWNERS, Dependabot, automated quality gates, and a tag-driven release pipeline.
+
+The current engineering path is:
+
+`change → pull request → repository hygiene → Python install/compile → Ruff → pytest → desktop build → merge → version-aligned tag → release gate → packaged artifacts + SHA-256 checksums → GitHub Release`
+
+The v0.1.1 release validated this path end to end. Python wheel/source distributions and `SHA256SUMS.txt` are generated automatically for matching release tags. Windows desktop installers remain a separately validated packaging step until a dedicated Windows release job is added.
+
 ## Why FinTerminal?
 
 Financial research often lives across spreadsheets, PDFs, market-data websites, notebooks, charting tools, and AI chat windows. FinTerminal brings those workflows into one local-first research layer that AI clients can access through the Model Context Protocol (MCP).
@@ -170,7 +180,7 @@ finterminal/
 
 Pull requests and pushes to `main` are checked with GitHub Actions for repository hygiene, version alignment, Python installation, source compilation, Ruff, pytest, and the desktop TypeScript/Vite build.
 
-Release tags additionally pass a release gate that validates version metadata and builds Python and desktop-renderer artifacts before they are treated as release candidates.
+Release tags additionally pass a release gate that validates version metadata and builds Python and desktop-renderer artifacts before they are treated as release candidates. Matching release tags publish Python distributions and a SHA-256 checksum manifest through GitHub Releases.
 
 ## Roadmap
 
