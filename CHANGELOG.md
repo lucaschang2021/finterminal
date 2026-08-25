@@ -19,19 +19,27 @@ _No project-level changes recorded yet._
 - Dependabot and CODEOWNERS configuration
 - repository hygiene and desktop-build CI
 - Python 3.13 package installation, Ruff, compile, and pytest CI
-- release-gate workflow that validates versions and builds Python/desktop-renderer artifacts
+- release workflow that validates version alignment and builds Python/desktop-renderer artifacts
+- automatic GitHub Release creation for matching `v*` tags
+- SHA-256 checksum manifest generation for published release artifacts
 
 ### Changed
 
 - normalized Python package metadata and aligned the project version to 0.1.1
 - aligned desktop package metadata with the repository-level Apache-2.0 license
 - refreshed the primary README with reproducible Python installation and the real repository structure
-- formalized version-alignment checks between Python and desktop packages
+- formalized version-alignment checks between Python, desktop, and release tags
 - synchronized analysis workspace artifacts
 - continued desktop and charting reliability improvements
 - fixed chart-data handling and chart-type switching issues
 - improved packaged desktop authentication/file access behavior
 - reduced latency for selected charting workflows
+
+### Release notes
+
+- Python source and wheel distributions are produced by the release workflow.
+- The automated Linux release workflow validates and archives the desktop renderer but does not yet publish a supported Windows installer.
+- Windows installer packaging remains a separately validated release step until a dedicated Windows release job is added.
 
 ## 0.1.0
 
